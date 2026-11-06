@@ -130,6 +130,53 @@ const crop = (c, b, padY=0.6, padX=0.02) => {
 };
 const digits = s => (s.match(/\d/g)||[]).length;
 
+// ช่องวันที่แบบกล่อง (มุมขวาบน ช่องละ 1 ตัว): ตัดเส้นกรอบ แล้วบีบตัวเลขให้ชิดกันก่อนอ่าน
+// เพราะ OCR อ่านตัวเลขที่ห่างกันมาก ๆ และมีเส้นคั่นผิดบ่อย
+function dateBoxes(c, x0, y0, w, h){
+  const g = gray(c, x0, y0, w, h, 1600), W = g.width, H = g.height;
+  const gx = g.getContext('2d'), d = gx.getImageData(0,0,W,H), p = d.data;
+  // ขาวดำแบบเทียบกับพื้นที่รอบ ๆ (รูปถ่ายมือถือแสงไม่เท่ากัน ตัวเลขจาง ๆ ก็ยังติด)
+  const N = W*H, I = new Float64Array((W+1)*(H+1));
+  for (let y=0;y<H;y++){ let row=0; for (let x=0;x<W;x++){ row += p[(y*W+x)*4]; I[(y+1)*(W+1)+x+1] = I[y*(W+1)+x+1] + row; } }
+  const r = Math.max(12, Math.round(H/5)), ink = new Uint8Array(N);
+  for (let y=0;y<H;y++){ const ya = Math.max(0,y-r), yb = Math.min(H,y+r+1);
+    for (let x=0;x<W;x++){ const xa = Math.max(0,x-r), xb = Math.min(W,x+r+1);
+      const m = (I[yb*(W+1)+xb] - I[ya*(W+1)+xb] - I[yb*(W+1)+xa] + I[ya*(W+1)+xa]) / ((yb-ya)*(xb-xa)), v = p[(y*W+x)*4];
+      ink[y*W+x] = (v < m*0.82 && m - v > 25) ? 1 : 0; } }
+
+  // ลบเส้นตั้ง (ขอบช่อง) และเส้นนอน (ขอบบน/ล่าง)
+  for (let x=0;x<W;x++){ let n=0; for (let y=0;y<H;y++) n+=ink[y*W+x]; if (n > H*0.55) for (let y=0;y<H;y++) ink[y*W+x]=0; }
+  for (let y=0;y<H;y++){ let n=0; for (let x=0;x<W;x++) n+=ink[y*W+x]; if (n > W*0.35) for (let x=0;x<W;x++) ink[y*W+x]=0; }
+  // แบ่งเป็นแถว ๆ แล้วลองทีละแถว (หมึกมากก่อน) เอาแถวแรกที่มีก้อนตัวเลขเรียงกันอย่างน้อย 6 ตัว
+  const rowInk = []; for (let y=0;y<H;y++){ let n=0; for (let x=0;x<W;x++) n+=ink[y*W+x]; rowInk.push(n); }
+  const bands = [];
+  for (let y=0, s=-1, acc=0; y<=H; y++){
+    if (y<H && rowInk[y] > 0){ if (s<0){ s=y; acc=0; } acc += rowInk[y]; }
+    else if (s>=0){ if (y-s > H*0.08 && y-s > 8) bands.push([s, y, acc]); s=-1; }
+  }
+  bands.sort((a,b) => b[2]-a[2]);
+  for (const [bandS, bandE] of bands.slice(0, 4)){
+    const colInk = x => { let n=0; for (let y=bandS;y<bandE;y++) n+=ink[y*W+x]; return n; };
+    const blobs = []; for (let x=0, s=-1; x<=W; x++){ const v = x<W ? colInk(x) : 0; if (v>0 && s<0) s=x; else if (v===0 && s>=0){ blobs.push([s,x]); s=-1; } }
+    const bh = bandE - bandS, keep = blobs.filter(([a,b]) => {
+      if (b-a < bh*0.12 || b-a > bh*1.5) return false;               // เศษเส้นกรอบบาง ๆ / ก้อนใหญ่เกิน
+      let n = 0, top = bandE, bot = bandS;
+      for (let x=a;x<b;x++) for (let y=bandS;y<bandE;y++) if (ink[y*W+x]){ n++; if (y<top) top=y; if (y>bot) bot=y; }
+      return bot-top >= bh*0.6 && n >= (b-a)*bh*0.12;                 // ตัวเลขสูงเกือบเต็มแถว และมีหมึกพอ
+    });
+    if (keep.length < 6 || keep.length > 10) continue;
+    const gap = Math.round(bh*0.35), out = document.createElement('canvas');
+    out.width = keep.reduce((s,[a,b]) => s + b-a + gap, gap); out.height = bh + gap*2;
+    const o = out.getContext('2d'), od = o.createImageData(out.width, out.height);
+    od.data.fill(255);
+    let ox = gap;
+    for (const [a,b] of keep){ for (let x=a;x<b;x++) for (let y=bandS;y<bandE;y++) if (ink[y*W+x]){ const k = ((y-bandS+gap)*out.width + ox + x-a)*4; od.data[k]=od.data[k+1]=od.data[k+2]=0; } ox += b-a+gap; }
+    o.putImageData(od, 0, 0);
+    return out;
+  }
+  return null;
+}
+
 // แถบ MICR เช็คไทย: …[เลขที่เช็ค]⑈ [ธนาคาร 3]⑆[สาขา 4]⑈ [เลขบัญชี]…
 function parseMicr(t){
   const s = t.replace(/\s+/g,'');
@@ -322,6 +369,23 @@ async function run(url){
     // 4) วันที่: อ่านซ้ำเฉพาะแถววันที่ แบบตัวเลขล้วน และแบบภาษาไทย (ชื่อเดือน)
     const dl = ls.find(l => /date|วันที่/i.test(l.text) && /\d/.test(l.text)) || ls.find(l => /(25|20)\d\d\b/.test(l.text) && !/\*\*/.test(l.text));
     const extra = [];
+    // 4a) ช่องวันที่แบบกล่องด้านขวาของคำว่า Date
+    const dw = ls.flatMap(l => l.words||[]).find(w => /^date/i.test(w.text.trim()));
+    const boxes = [];
+    // ขอบขวาของช่องวันที่ ≈ ขอบขวาของข้อความบนเช็ค (เช่น "Or Order") ไม่เลยไปถึงพื้นโต๊ะ
+    const textRight = Math.max(...ls.filter(l => /[A-Za-zก-๙]{3}/.test(l.text) && digits(l.text) < 12).map(l => l.bbox.x1), 0);
+    if (dw){ const b = dw.bbox, h = b.y1-b.y0, x0 = Math.min(b.x1, b.x0 + h*2.9), xr = textRight > x0 + h*10 ? textRight + src.width*0.015 : x0 + h*30;
+      boxes.push([x0, Math.max(0, b.y0-h*1.6), Math.min(src.width, xr) - x0, h*3.2]); }
+    boxes.push([src.width*0.6, 0, src.width*0.4, src.height*0.25]);   // สำรอง: มุมขวาบนของเช็ค
+    await we.setParameters({tessedit_char_whitelist: '0123456789', tessedit_pageseg_mode: '7'});
+    try {
+      for (const [x, y, w, h] of boxes){
+        const c = dateBoxes(src, x, y, Math.max(10, w), Math.min(h, src.height - y)); if (!c) continue;
+        const t = (await we.recognize(c)).data.text.replace(/\D/g,''); raw += 'DBOX>> ' + t + '\n';
+        // รับเฉพาะ 8 หลักที่เป็นวันที่จริง (ววดดปปปป) กันอ่านมั่ว
+        if (t.length === 8 && mkDate(t.slice(0,2), t.slice(2,4), t.slice(4))){ extra.push('Date ' + t); break; }
+      }
+    } finally { await we.setParameters({tessedit_char_whitelist: '', tessedit_pageseg_mode: '6'}); }
     if (dl){
       const c = crop(src, dl.bbox, 0.5, 0.02);
       extra.push((await wt.recognize(c)).data.text);
