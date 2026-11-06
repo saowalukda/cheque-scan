@@ -35,7 +35,7 @@ img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
   <div class="step">ขั้นที่ 1</div>
   <label for="cam" class="btn">ถ่ายรูปเช็ค</label>
   <input id="cam" type="file" accept="image/*" capture="environment" hidden>
-  <p class="hint">ถ่ายด้านหน้าเช็คให้เห็นทั้งใบ ตรง ๆ แสงพอ เห็นแถบตัวเลขด้านล่างชัด</p>
+  <p class="hint">วางเช็คบนโต๊ะ ถ่ายตรง ๆ ให้<b>เช็คเต็มจอ</b> เห็นแถบตัวเลขด้านล่างชัด · ถ่ายเช็คตัวจริง ไม่ถ่ายจากหน้าจอ</p>
   <img id="pv" alt="รูปเช็ค">
   <div class="bar" id="bar"><i></i></div>
   <p class="hint" id="st"></p>
@@ -89,47 +89,54 @@ const $ = id => document.getElementById(id);
 const fill = (sel, opts) => { sel.innerHTML = '<option value="">— เลือก —</option>' + opts.map(o=>`<option>${o}</option>`).join(''); };
 fill($('bank'), BANK_OPTS); fill($('payer'), PAYERS);
 
-let worker;
-async function getWorker(){
-  if (worker) return worker;
-  worker = await Tesseract.createWorker('eng', 1, {logger: m => {
-    if (m.status === 'recognizing text') $('bar').firstChild.style.width = Math.round(m.progress*100)+'%';
-  }});
-  return worker;
+let wEng, wMicr;
+const prog = m => { if (m.status === 'recognizing text') $('bar').firstChild.style.width = Math.round(m.progress*100)+'%'; };
+async function workers(){
+  if (!wEng) wEng = await Tesseract.createWorker('eng', 1, {logger: prog});
+  // ไฟล์ฝึกอ่านฟอนต์ MICR (E-13B) วางไว้ข้างหน้าเว็บ · A=⑆ B=⑇ C=⑈ D=⑉
+  if (!wMicr) wMicr = await Tesseract.createWorker('e13b', 1, {logger: prog, langPath: new URL('.', location.href).href, gzip: false});
+  return [wEng, wMicr];
 }
 
-// ย่อรูป ทำขาวดำ คืน canvas ทั้งใบ และแถบล่าง (แถบ MICR)
-function prep(img){
-  const W = Math.min(2000, img.naturalWidth), s = W / img.naturalWidth, H = Math.round(img.naturalHeight*s);
+// ขาวดำ + ขยายให้กว้างอย่างน้อย 2000px
+function gray(src, sx=0, sy=0, sw=src.naturalWidth||src.width, sh=src.naturalHeight||src.height, minW=2000){
+  const k = Math.max(1, minW/sw), W = Math.min(4000, Math.round(sw*k)), H = Math.round(sh*W/sw);
   const c = document.createElement('canvas'); c.width = W; c.height = H;
-  const g = c.getContext('2d'); g.drawImage(img,0,0,W,H);
-  const d = g.getImageData(0,0,W,H), p = d.data;
-  for (let i=0;i<p.length;i+=4){ const y = .299*p[i]+.587*p[i+1]+.114*p[i+2]; p[i]=p[i+1]=p[i+2]=y; }
-  g.putImageData(d,0,0);
-  const sh = Math.round(H*0.22), strip = document.createElement('canvas');
-  strip.width = W; strip.height = sh; strip.getContext('2d').drawImage(c,0,H-sh,W,sh,0,0,W,sh);
-  return {full:c, strip};
+  const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(src, sx, sy, sw, sh, 0, 0, W, H);
+  const d = g.getImageData(0,0,W,H), p = d.data; let lo = 255, hi = 0;
+  for (let i=0;i<p.length;i+=4){ const y = .299*p[i]+.587*p[i+1]+.114*p[i+2]; p[i]=y; if (y<lo) lo=y; if (y>hi) hi=y; }
+  const r = 255/Math.max(1, hi-lo);
+  for (let i=0;i<p.length;i+=4){ const y = (p[i]-lo)*r; p[i]=p[i+1]=p[i+2]=y; }
+  g.putImageData(d,0,0); return c;
 }
+const crop = (c, b, padY=0.6, padX=0.02) => {
+  const h = b.y1-b.y0, x0 = Math.max(0, b.x0 - c.width*padX), y0 = Math.max(0, b.y0 - h*padY);
+  const x1 = Math.min(c.width, b.x1 + c.width*padX), y1 = Math.min(c.height, b.y1 + h*padY);
+  return gray(c, x0, y0, x1-x0, y1-y0, 2400);
+};
+const digits = s => (s.match(/\d/g)||[]).length;
 
-// แถบ MICR เช็คไทย: [เลขที่เช็ค 7-8 หลัก] [รหัสธนาคาร 3 + สาขา 4] [เลขบัญชี]
+// แถบ MICR เช็คไทย: …[เลขที่เช็ค]⑈ [ธนาคาร 3]⑆[สาขา 4]⑈ [เลขบัญชี]…
 function parseMicr(t){
-  const runs = (t.replace(/[^0-9]+/g,' ').match(/\d+/g) || []);
+  const s = t.replace(/\s+/g,'');
+  let m = s.match(/(\d{7,8})[A-D]+(\d{3})[A-D]+(\d{4})/);            // เลขเช็ค ⑈ ธนาคาร ⑆ สาขา
+  if (m && BANKS[m[2]]) return {no: m[1], bank: m[2]};
+  m = s.match(/(\d{7,8})\D{0,3}(\d{3})\D{0,3}\d{4}/);
+  if (m && BANKS[m[2]]) return {no: m[1], bank: m[2]};
+  const runs = s.split(/[^0-9]+/).filter(Boolean);
   let no = null, bank = null;
-  // สัญลักษณ์ ⑆ ⑈ มักถูกอ่านเป็นเลข 1 ติดหัว/ท้าย · เลขที่เช็คไทยมี 7 หลัก
-  const fix = r => { let x = r; while (x.length>7 && x[0]==='1') x = x.slice(1); while (x.length>7 && x.endsWith('1')) x = x.slice(0,-1); return x; };
-  for (const r0 of runs){
-    const r = r0.length>7 && r0.length<=9 && !no ? fix(r0) : r0;
-    if (!no && (r.length===7 || r.length===8)) { no = r; continue; }
-    if (no && !bank && r.length>=3 && BANKS[r.slice(0,3)]) { bank = r.slice(0,3); break; }
+  for (let i=0;i<runs.length;i++){
+    const r = runs[i];
+    if (!bank && (r.length===3 || r.length===7) && BANKS[r.slice(0,3)] && i>0) { bank = r.slice(0,3); for (let j=i-1;j>=0;j--) if (runs[j].length===7||runs[j].length===8){ no = runs[j]; break; } break; }
   }
-  if (!bank) for (const r of runs) if (r.length===7 && BANKS[r.slice(0,3)] && r!==no) { bank = r.slice(0,3); break; }
+  if (!no) no = runs.find(r => r.length===7 || r.length===8) || null;
   return {no, bank};
 }
 
-// ยอดเงิน: หาตัวเลขแบบ 50,000.00 ที่ใหญ่ที่สุด
+// ยอดเงิน: เลขแบบ 310,826.59 (มี , หรือ . และทศนิยม 2 ตำแหน่ง) เลือกค่าที่มากสุด
 function parseAmount(t){
-  const m = t.replace(/[Oo]/g,'0').match(/\d{1,3}(?:[,\s]\d{3})*\.\d{2}|\d{4,9}\.\d{2}/g) || [];
-  const v = m.map(x=>parseFloat(x.replace(/[,\s]/g,''))).filter(x=>x>0 && x<1e9);
+  const m = t.replace(/[Oo]/g,'0').replace(/(\d)\s*([,.])\s*(\d)/g,'$1$2$3').match(/\d{1,3}(?:,\d{3})+(?:\.\d{2})?|\d{3,9}\.\d{2}/g) || [];
+  const v = m.map(x=>parseFloat(x.replace(/,/g,''))).filter(x=>x>=1 && x<1e9);
   return v.length ? Math.max(...v) : null;
 }
 
@@ -140,16 +147,45 @@ async function run(url){
   await img.decode();
   $('review').style.display = 'none';
   $('bar').style.display = 'block'; $('bar').firstChild.style.width = '0';
-  $('st').textContent = 'กำลังอ่านเช็ค… (ครั้งแรกอาจใช้เวลา 10–20 วินาที)';
+  $('st').textContent = 'กำลังอ่านเช็ค… (ครั้งแรกอาจใช้เวลา 10–30 วินาที)';
+  let raw = '';
   try {
-    const w = await getWorker(), {full, strip} = prep(img);
-    await w.setParameters({tessedit_char_whitelist:'0123456789'});
-    const micr = (await w.recognize(strip)).data.text;
-    await w.setParameters({tessedit_char_whitelist:''});
-    const all = (await w.recognize(full)).data.text;
-    const {no, bank} = parseMicr(micr + ' ' + all), amt = parseAmount(all);
+    const [we, wm] = await workers(), full = gray(img);
+    // 1) อ่านทั้งรูป หาแถวแถบ MICR (แถวที่มีตัวเลขมากที่สุด) และแถวยอดเงิน
+    const r1 = (await we.recognize(full, {}, {blocks: true})).data;
+    const lines = (r1.blocks||[]).flatMap(b => b.paragraphs.flatMap(p => p.lines));
+    const micrLine = lines.filter(l => digits(l.text) >= 12).sort((a,b) => digits(b.text)-digits(a.text))[0];
+    let micr = '';
+    if (micrLine){ micr = (await wm.recognize(crop(full, micrLine.bbox))).data.text; }
+    else { micr = (await wm.recognize(gray(img, 0, img.naturalHeight*0.75, img.naturalWidth, img.naturalHeight*0.25))).data.text; }
+    let {no, bank} = parseMicr(micr);
+    if (!no || !bank){ const p2 = parseMicr(r1.text); no = no || p2.no; bank = bank || p2.bank; }
+    if (!bank){ // รหัสธนาคาร 3 หลักตามด้วยสาขา 4 หลัก เช่น 004:1234
+      for (const m of r1.text.matchAll(/(\d{3})\s*[:;|\-]?\s*\d{4}\b/g)) if (BANKS[m[1]]) { bank = m[1]; break; } }
+    // 1b) ถ้าเช็คเล็กในรูป (ถ่ายไกล/มีของอื่นติดมา) ตัดเฉพาะตัวเช็คจากตำแหน่งแถบ MICR แล้วอ่านใหม่
+    let src = full, rr = r1, ls = lines;
+    if (micrLine){
+      const b = micrLine.bbox, mw = b.x1 - b.x0;
+      if (mw < full.width*0.7){
+        const cw = mw/0.85, x0 = Math.max(0, b.x0 - cw*0.08), y1 = Math.min(full.height, b.y1 + cw*0.04), y0 = Math.max(0, y1 - cw*0.5);
+        src = gray(full, x0, y0, Math.min(full.width - x0, cw*1.08), y1 - y0, 2400);
+        rr = (await we.recognize(src, {}, {blocks: true})).data;
+        ls = (rr.blocks||[]).flatMap(b => b.paragraphs.flatMap(p => p.lines));
+        raw += 'CROP>> ' + rr.text + '\n';
+      }
+    }
+    // 2) ยอดเงิน: อ่านซ้ำเฉพาะแถวที่น่าจะเป็นยอดเงิน (มี *** / ฿ / ตัวเลขมีจุดทศนิยม) แบบขยายใหญ่
+    const micrInSrc = ls.filter(l => digits(l.text) >= 12).sort((a,b) => digits(b.text)-digits(a.text))[0];
+    let amt = parseAmount(ls.filter(l => l !== micrInSrc).map(l => l.text).join('\n'));
+    const amtLines = ls.filter(l => l !== micrInSrc && /\*{2,}|฿|\d[.,]\d{2}\b/.test(l.text));
+    await we.setParameters({tessedit_char_whitelist: '0123456789,.*'});
+    for (const l of amtLines){ const t = (await we.recognize(crop(src, l.bbox, 0.4, 0))).data.text; raw += 'AMT>> '+t+'\n'; const v = parseAmount(t); if (v && (!amt || v > amt)) amt = v; }
+    await we.setParameters({tessedit_char_whitelist: ''});
+    if (!amt && src !== full) amt = parseAmount(lines.filter(l => l !== micrLine).map(l => l.text).join('\n'));
+    raw += 'MICR>> ' + micr + '\nALL>> ' + r1.text;
     show(no, amt, bank);
   } catch(err){
+    raw += 'ERR ' + err;
     $('st').textContent = 'อ่านไม่สำเร็จ กรอกเองได้ด้านล่าง'; show(null,null,null);
   }
   $('bar').style.display = 'none';
