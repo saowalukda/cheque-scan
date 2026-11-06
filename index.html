@@ -38,8 +38,9 @@ img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
 
 <div class="card">
   <div class="step">ขั้นที่ 1</div>
-  <label for="cam" class="btn">ถ่ายรูปเช็ค</label>
-  <input id="cam" type="file" accept="image/*" capture="environment" hidden>
+  <label for="cam" class="btn">ถ่ายรูป / เลือกรูปเช็ค</label>
+  <input id="cam" type="file" accept="image/*" hidden>
+  <p class="hint"><b>แนะนำ:</b> ถ่ายเช็คด้วยแอปกล้องของมือถือก่อน แล้วกดปุ่มนี้ → <b>คลังรูปภาพ</b> → เลือกรูปนั้น · รูปจะอยู่ในเครื่อง ใช้แนบในฟอร์มต่อได้เลย <b>ไม่ต้องถ่ายซ้ำ</b></p>
   <p class="hint">วางเช็คบนโต๊ะ ถ่ายตรง ๆ ให้<b>เช็คเต็มจอ</b> เห็นแถบตัวเลขด้านล่างชัด · ถ่ายเช็คตัวจริง ไม่ถ่ายจากหน้าจอ</p>
   <img id="pv" alt="รูปเช็ค">
   <div class="bar" id="bar"><i></i></div>
@@ -79,8 +80,11 @@ img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
   </div>
 
   <div style="height:16px"></div>
+  <button class="btn sec" id="save" hidden>💾 บันทึกรูปนี้ลงเครื่อง (ถ้าถ่ายจากปุ่มด้านบน)</button>
+  <p class="hint" id="saveH" hidden></p>
+  <div style="height:8px"></div>
   <button class="btn" id="go">ไปตรวจและส่ง →</button>
-  <p class="hint">จะเปิดฟอร์ม <b>ส่งเช็ค</b> ที่กรอกข้อมูลไว้ให้แล้ว · <b>ตรวจกับตัวเช็คทุกช่อง แก้ในฟอร์มได้เลย</b> · แนบรูปเช็ค แล้วกดส่ง</p>
+  <p class="hint">จะเปิดฟอร์ม <b>ส่งเช็ค</b> ที่กรอกข้อมูลไว้ให้แล้ว · <b>ตรวจกับตัวเช็คทุกช่อง แก้ในฟอร์มได้เลย</b><br>ช่อง <b>📷 รูปเช็ค</b>: กดแนบ → <b>คลังรูปภาพ</b> → เลือกรูปเดิม (รูปล่าสุด) · ลิงก์จากหน้านี้ส่งรูปไปให้ไม่ได้ เป็นข้อจำกัดของ Lark</p>
   <button class="btn sec" id="again" style="margin-top:8px">ถ่ายใหม่</button>
 </div>
 </main>
@@ -329,7 +333,18 @@ const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezone
 const parseAmount = t => pickAmount(amountCands(t));
 const fmt = v => v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
-$('cam').addEventListener('change', e => { const f = e.target.files[0]; if (f) run(URL.createObjectURL(f)); });
+let shot = null;
+$('cam').addEventListener('change', e => { const f = e.target.files[0]; if (f){ shot = f; run(URL.createObjectURL(f)); } });
+// รูปที่ถ่ายผ่านปุ่มในหน้าเว็บไม่ถูกเก็บลงคลังภาพ → ให้บันทึกเองก่อนไปฟอร์ม
+// บันทึกลงเครื่องเท่านั้น ไม่ได้ส่งรูปไปที่ไหน
+$('save').addEventListener('click', async () => {
+  const f = shot && new File([shot], 'cheque.jpg', {type: shot.type || 'image/jpeg'});
+  if (f && navigator.canShare && navigator.canShare({files: [f]})){
+    try { await navigator.share({files: [f]}); $('saveH').textContent = 'เลือก "บันทึกภาพ" แล้ว รูปจะอยู่ในคลังรูปภาพ'; $('saveH').hidden = false; return; } catch(e){ if (e.name === 'AbortError') return; }
+  }
+  $('saveH').innerHTML = '<b>กดค้างที่รูปเช็คด้านบน → บันทึกรูปภาพ</b> (มือถือบางรุ่น/ในแอป Lark บันทึกด้วยปุ่มนี้ไม่ได้)';
+  $('saveH').hidden = false; $('pv').scrollIntoView({behavior:'smooth'});
+});
 async function run(url){
   const img = $('pv');
   img.src = url; img.style.display = 'block';
@@ -451,6 +466,7 @@ function show(no, amt, bank, payer, toUs, date){
   $('sum').innerHTML = row('เลขที่เช็ค', no) + row('จำนวนเงิน (บาท)', amt!=null ? fmt(amt) : null) + row('ธนาคาร', bank ? BANKS[bank] : null)
     + row('วันที่บนเช็ค', date ? (([y,m,d]) => d+'/'+m+'/'+(+y+543))(date.split('-')) : null) + row('ผู้สั่งจ่าย', pName);
   $('st').textContent = 'อ่านเสร็จ';
+  $('save').hidden = !shot;
   $('review').style.display = 'block'; $('review').scrollIntoView({behavior:'smooth'});
 }
 
