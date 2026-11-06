@@ -43,6 +43,7 @@ img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
 
 <div class="card" id="review">
   <div class="step">ขั้นที่ 2 · ตรวจและแก้ให้ถูกก่อนกดยืนยัน</div>
+  <div id="payeeN" hidden style="background:#fef0c7;border:1px solid #f79009;border-radius:8px;padding:10px;font-size:15px;color:#7a2e0e;margin-bottom:8px"></div>
   <label for="no">เลขที่เช็ค</label>
   <input id="no" inputmode="numeric" autocomplete="off">
   <div id="noN" class="chk"></div>
@@ -201,6 +202,11 @@ function findPayer(t){
   }
   return null;
 }
+// ผู้รับเงิน (บรรทัด จ่าย/Pay) ต้องเป็นสมิติเวช · OCR ไทยมักอ่านเพี้ยน จึงจับแค่บางส่วนของชื่อ
+function payeeOk(t){
+  const flat = t.replace(/\s+/g,'');
+  return /สมิติ|มิติเวช|สม.{0,8}เวช|โรงพยาบาลสม|SAMITI|AMITIVE|MITIVEJ/i.test(flat);
+}
 const parseAmount = t => pickAmount(amountCands(t));
 const fmt = v => v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
@@ -251,18 +257,21 @@ async function run(url){
     // 3) ผู้สั่งจ่าย: อ่านภาษาไทยบนตัวเช็ค แล้วจับคู่กับรายชื่อบริษัทประกัน
     const tt = (await wt.recognize(full)).data.text; raw += 'THA>> ' + tt + '\n';
     const payer = findPayer(tt + '\n' + rr.text + '\n' + r1.text);
+    const toUs = payeeOk(tt + '\n' + rr.text + '\n' + r1.text);
     if (!amt && src !== full) amt = parseAmount(lines.filter(l => l !== micrLine).map(l => l.text).join('\n'));
     raw += 'MICR>> ' + micr + '\nALL>> ' + r1.text;
-    show(no, amt, bank, payer);
+    show(no, amt, bank, payer, toUs);
   } catch(err){
     raw += 'ERR ' + err;
-    $('st').textContent = 'อ่านไม่สำเร็จ กรอกเองได้ด้านล่าง'; show(null,null,null,null);
+    $('st').textContent = 'อ่านไม่สำเร็จ กรอกเองได้ด้านล่าง'; show(null,null,null,null,true);
   }
   $('bar').style.display = 'none';
 }
 
 function note(id, ok, okText, noText){ const n=$(id); n.className = ok?'okk':'chk'; n.textContent = ok?okText:noText; }
-function show(no, amt, bank, payer){
+function show(no, amt, bank, payer, toUs){
+  $('payeeN').hidden = toUs;
+  $('payeeN').innerHTML = '⚠️ <b>ไม่พบชื่อ "สมิติเวช" ในบรรทัด จ่าย/Pay</b><br>เช็คนี้อาจไม่ได้สั่งจ่ายโรงพยาบาล ตรวจชื่อผู้รับเงินบนเช็คก่อนส่ง ถ้าไม่ใช่สมิติเวช อย่ารับเช็ค';
   $('no').value = no || ''; $('amt').value = amt!=null ? fmt(amt) : '';
   $('bank').value = bank ? BANKS[bank] : '';
   note('noN', no, 'อ่านได้ · เทียบกับตัวเลขบนเช็คอีกครั้ง', 'อ่านไม่ได้ · พิมพ์เอง');
