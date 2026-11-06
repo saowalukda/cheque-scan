@@ -25,6 +25,11 @@ img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
 .bar{height:6px;background:#e4e7ec;border-radius:3px;overflow:hidden;margin-top:10px;display:none}
 .bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
 #review{display:none}
+.warn{background:#fef0c7;border:1px solid #f79009;border-radius:8px;padding:10px;font-size:15px;color:#7a2e0e;margin-bottom:8px}
+#sum{width:100%;border-collapse:collapse;font-size:15px;margin-top:4px}
+#sum td{padding:6px 0;border-bottom:1px solid #eaecf0;vertical-align:top}
+#sum td:first-child{color:var(--mute);width:42%}
+#sum .no{color:var(--warn)}
 </style>
 </head>
 <body>
@@ -42,8 +47,12 @@ img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
 </div>
 
 <div class="card" id="review">
-  <div class="step">ขั้นที่ 2 · ตรวจและแก้ให้ถูกก่อนกดยืนยัน</div>
-  <div id="payeeN" hidden style="background:#fef0c7;border:1px solid #f79009;border-radius:8px;padding:10px;font-size:15px;color:#7a2e0e;margin-bottom:8px"></div>
+  <div class="step">ขั้นที่ 2 · ผลการอ่าน</div>
+  <div id="warns"></div>
+  <div id="payeeN" hidden></div>
+  <table id="sum"></table>
+  <!-- ช่องเก็บค่าที่อ่านได้ (ซ่อน) · ตรวจและแก้ในฟอร์ม Lark ที่เดียว -->
+  <div id="fields" hidden>
   <label for="no">เลขที่เช็ค</label>
   <input id="no" inputmode="numeric" autocomplete="off">
   <div id="noN" class="chk"></div>
@@ -67,10 +76,11 @@ img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
     <label for="other">ระบุชื่อผู้สั่งจ่าย</label>
     <input id="other" autocomplete="off" placeholder="พิมพ์ชื่อบริษัท / ผู้สั่งจ่าย">
   </div>
+  </div>
 
   <div style="height:16px"></div>
-  <button class="btn" id="go">ยืนยัน → เปิดฟอร์มส่งเช็ค</button>
-  <p class="hint">ฟอร์มจะเปิดพร้อมข้อมูลที่กรอกไว้ · <b>แนบรูปเช็คอีกครั้งในฟอร์ม</b> แล้วกดส่ง</p>
+  <button class="btn" id="go">ไปตรวจและส่ง →</button>
+  <p class="hint">จะเปิดฟอร์ม <b>ส่งเช็ค</b> ที่กรอกข้อมูลไว้ให้แล้ว · <b>ตรวจกับตัวเช็คทุกช่อง แก้ในฟอร์มได้เลย</b> · แนบรูปเช็ค แล้วกดส่ง</p>
   <button class="btn sec" id="again" style="margin-top:8px">ถ่ายใหม่</button>
 </div>
 </main>
@@ -418,8 +428,7 @@ function show(no, amt, bank, payer, toUs, date){
     else note('dtN', true, 'อ่านได้ · ปี พ.ศ. แปลงให้แล้ว ตรวจกับเช็คอีกครั้ง', '');
   }
   $('payeeN').hidden = toUs;
-  $('payeeN').innerHTML = '⚠️ <b>ไม่พบชื่อ "สมิติเวช" ในบรรทัด จ่าย/Pay</b><br>เช็คนี้อาจไม่ได้สั่งจ่ายโรงพยาบาล ตรวจชื่อผู้รับเงินบนเช็คก่อนส่ง ถ้าไม่ใช่สมิติเวช อย่ารับเช็ค';
-  $('no').value = no || ''; $('amt').value = amt!=null ? fmt(amt) : '';
+    $('no').value = no || ''; $('amt').value = amt!=null ? fmt(amt) : '';
   $('bank').value = bank ? BANKS[bank] : '';
   note('noN', no, 'อ่านได้ · เทียบกับตัวเลขบนเช็คอีกครั้ง', 'อ่านไม่ได้ · พิมพ์เอง');
   note('amtN', amt!=null && amtSure, 'อ่านได้ · เทียบกับยอดบนเช็คทีละหลัก รวมจุดทศนิยม',
@@ -430,24 +439,30 @@ function show(no, amt, bank, payer, toUs, date){
   $('otherBox').hidden = $('payer').value !== OTHER;
   note('payerN', payer, payer && payer.other ? 'อ่านชื่อบริษัทจากเช็ค · ตรวจตัวสะกดอีกครั้ง' : 'อ่านจากชื่อบนเช็ค · ตรวจอีกครั้ง',
        'ไม่พบชื่อบริษัทประกันบนเช็ค (เช่น เช็คธนาคาร / แคชเชียร์เช็ค) · เลือกเอง');
-  $('st').textContent = 'อ่านเสร็จ ตรวจข้อมูลด้านล่าง';
+  // สรุปผลอ่าน (ดูอย่างเดียว) + คำเตือนสีส้ม · การแก้ไขทำในฟอร์ม Lark ที่เดียว
+  const W = [];
+  if (!toUs) W.push('⚠️ <b>ไม่พบชื่อ "สมิติเวช" ในบรรทัด จ่าย/Pay</b><br>เช็คนี้อาจไม่ได้สั่งจ่ายโรงพยาบาล ตรวจชื่อผู้รับเงินบนเช็ค ถ้าไม่ใช่สมิติเวช อย่ารับเช็ค');
+  if (amt!=null && !amtSure) W.push('⚠️ <b>ยอดเงินไม่แน่ใจ</b> (ดาว *** อาจถูกอ่านเป็นตัวเลข) ตรวจยอดในฟอร์มทีละหลัก');
+  if ($('dtN').textContent.startsWith('⚠️')) W.push('⚠️ <b>' + $('dtN').textContent.replace(/^⚠️ อ่านได้ · /,'') + '</b>');
+  $('warns').innerHTML = W.map(w => '<div class="warn">'+w+'</div>').join('');
+  const esc = t => String(t).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const row = (k, v) => '<tr><td>'+k+'</td><td'+(v?'':' class="no"')+'>'+(v ? esc(v) : 'อ่านไม่ได้ · กรอกในฟอร์ม')+'</td></tr>';
+  const pName = payer ? (payer.other ? payer.other : payer.name) : null;
+  $('sum').innerHTML = row('เลขที่เช็ค', no) + row('จำนวนเงิน (บาท)', amt!=null ? fmt(amt) : null) + row('ธนาคาร', bank ? BANKS[bank] : null)
+    + row('วันที่บนเช็ค', date ? (([y,m,d]) => d+'/'+m+'/'+(+y+543))(date.split('-')) : null) + row('ผู้สั่งจ่าย', pName);
+  $('st').textContent = 'อ่านเสร็จ';
   $('review').style.display = 'block'; $('review').scrollIntoView({behavior:'smooth'});
 }
 
 $('go').addEventListener('click', () => {
   const no = $('no').value.replace(/\D/g,''), amt = $('amt').value.replace(/[^\d.]/g,'');
-  if (!no){ alert('กรอกเลขที่เช็คก่อน'); $('no').focus(); return; }
   const q = new URLSearchParams();
-  q.set('prefill_'+Q.no, no);
+  if (no) q.set('prefill_'+Q.no, no);
   if (amt) q.set('prefill_'+Q.amt, amt);
   if ($('bank').value) q.set('prefill_'+Q.bank, $('bank').value);
   if ($('payer').value) q.set('prefill_'+Q.payer, $('payer').value);
   if ($('dt').value) q.set('prefill_'+Q.date, $('dt').value.replace(/-/g, DATE_SEP));
-  if ($('payer').value === OTHER){
-    const o = $('other').value.trim();
-    if (!o){ alert('เลือก อื่น ๆ แล้ว ต้องพิมพ์ชื่อผู้สั่งจ่าย'); $('other').focus(); return; }
-    q.set('prefill_'+Q.other, o);
-  }
+  if ($('payer').value === OTHER && $('other').value.trim()) q.set('prefill_'+Q.other, $('other').value.trim());
   location.href = FORM + '?' + q.toString().replace(/\+/g,'%20');
 });
 $('payer').addEventListener('change', () => { const on = $('payer').value === OTHER; $('otherBox').hidden = !on; if (on) $('other').focus(); });
