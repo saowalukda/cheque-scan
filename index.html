@@ -58,6 +58,10 @@ img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
   <label for="payer">ผู้สั่งจ่าย</label>
   <select id="payer"></select>
   <div class="hint">ระบบยังอ่านชื่อผู้สั่งจ่ายไม่ได้ กดเลือกเอง</div>
+  <div id="otherBox" hidden>
+    <label for="other">ระบุชื่อผู้สั่งจ่าย</label>
+    <input id="other" autocomplete="off" placeholder="พิมพ์ชื่อบริษัท / ผู้สั่งจ่าย">
+  </div>
 
   <div style="height:16px"></div>
   <button class="btn" id="go">ยืนยัน → เปิดฟอร์มส่งเช็ค</button>
@@ -69,7 +73,8 @@ img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
 <script>
 const FORM = "https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpWkaC5DNj54uJTvQwigYrhc";
 // ชื่อคำถามในฟอร์ม (ทดสอบแล้ว: prefill ด้วยชื่อคำถามใช้ได้)
-const Q = {no:"เลขที่เช็ค", amt:"จำนวนเงิน (บาท)", bank:"ธนาคาร", payer:"ผู้สั่งจ่าย"};
+const Q = {no:"เลขที่เช็ค", amt:"จำนวนเงิน (บาท)", bank:"ธนาคาร", payer:"ผู้สั่งจ่าย", other:"ระบุชื่อผู้สั่งจ่าย"};
+const OTHER = "อื่น ๆ (ระบุ)";
 // รหัสธนาคาร 3 หลักในแถบ MICR → ตัวเลือกในฟอร์ม
 const BANKS = {
  "002":"ธนาคารกรุงเทพ (BBL)","004":"ธนาคารกสิกรไทย (KBank)","006":"ธนาคารกรุงไทย (KTB)",
@@ -133,12 +138,29 @@ function parseMicr(t){
   return {no, bank};
 }
 
-// ยอดเงิน: เลขแบบ 310,826.59 (มี , หรือ . และทศนิยม 2 ตำแหน่ง) เลือกค่าที่มากสุด
-function parseAmount(t){
-  const m = t.replace(/[Oo]/g,'0').replace(/(\d)\s*([,.])\s*(\d)/g,'$1$2$3').match(/\d{1,3}(?:,\d{3})+(?:\.\d{2})?|\d{3,9}\.\d{2}/g) || [];
-  const v = m.map(x=>parseFloat(x.replace(/,/g,''))).filter(x=>x>=1 && x<1e9);
-  return v.length ? Math.max(...v) : null;
+// ยอดเงิน: ตัวคั่นสุดท้ายที่ตามด้วยเลข 2 หลักคือทศนิยม (310,826,59 → 310826.59)
+// เก็บผู้สมัครจากทุกรอบที่อ่าน เลือกค่าที่มีทศนิยมและเจอบ่อยที่สุด
+function amountCands(t){
+  t = t.replace(/[Oo]/g,'0').replace(/(\d)\s*([,.])\s*(\d)/g,'$1$2$3');
+  const c = [];
+  for (const m of t.matchAll(/\d[\d,.]*\d/g)){
+    const x = m[0]; let v = null, dec = false, mm;
+    if ((mm = x.match(/^(\d{1,3}(?:[.,]?\d{3})*)[.,](\d{2})$/))) { v = parseFloat(mm[1].replace(/[.,]/g,'') + '.' + mm[2]); dec = true; }
+    // ยอดพิมพ์มี *** ล้อม: ดาวท้ายมักถูกอ่านเป็นเลข 1 หลัก (310,826.593 / 310,826,591) → ตัดทิ้ง
+    else if (/\*/.test(t.slice(Math.max(0, m.index-3), m.index)) && (mm = x.match(/^(\d{1,3}(?:[.,]?\d{3})*)[.,](\d{2})\d$/))) { v = parseFloat(mm[1].replace(/[.,]/g,'') + '.' + mm[2]); dec = true; }
+    else if (/^\d{1,3}(,\d{3})+$/.test(x)) v = parseFloat(x.replace(/,/g,''));
+    if (v && v >= 1 && v < 1e9) c.push({v, dec});
+  }
+  return c;
 }
+function pickAmount(c){
+  const d = c.filter(o => o.dec), pool = d.length ? d : c;
+  if (!pool.length) return null;
+  const n = {}; pool.forEach(o => n[o.v] = (n[o.v]||0) + 1);
+  return +Object.keys(n).sort((a,b) => n[b]-n[a] || b-a)[0];
+}
+const parseAmount = t => pickAmount(amountCands(t));
+const fmt = v => v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
 $('cam').addEventListener('change', e => { const f = e.target.files[0]; if (f) run(URL.createObjectURL(f)); });
 async function run(url){
@@ -176,11 +198,12 @@ async function run(url){
     }
     // 2) ยอดเงิน: อ่านซ้ำเฉพาะแถวที่น่าจะเป็นยอดเงิน (มี *** / ฿ / ตัวเลขมีจุดทศนิยม) แบบขยายใหญ่
     const micrInSrc = ls.filter(l => digits(l.text) >= 12).sort((a,b) => digits(b.text)-digits(a.text))[0];
-    let amt = parseAmount(ls.filter(l => l !== micrInSrc).map(l => l.text).join('\n'));
+    const cands = amountCands(ls.filter(l => l !== micrInSrc).map(l => l.text).join('\n'));
     const amtLines = ls.filter(l => l !== micrInSrc && /\*{2,}|฿|\d[.,]\d{2}\b/.test(l.text));
     await we.setParameters({tessedit_char_whitelist: '0123456789,.*'});
-    for (const l of amtLines){ const t = (await we.recognize(crop(src, l.bbox, 0.4, 0))).data.text; raw += 'AMT>> '+t+'\n'; const v = parseAmount(t); if (v && (!amt || v > amt)) amt = v; }
+    for (const l of amtLines){ const t = (await we.recognize(crop(src, l.bbox, 0.4, 0))).data.text; raw += 'AMT>> '+t+'\n'; cands.push(...amountCands(t), ...amountCands(t)); }
     await we.setParameters({tessedit_char_whitelist: ''});
+    let amt = pickAmount(cands);
     if (!amt && src !== full) amt = parseAmount(lines.filter(l => l !== micrLine).map(l => l.text).join('\n'));
     raw += 'MICR>> ' + micr + '\nALL>> ' + r1.text;
     show(no, amt, bank);
@@ -193,10 +216,10 @@ async function run(url){
 
 function note(id, ok, okText, noText){ const n=$(id); n.className = ok?'okk':'chk'; n.textContent = ok?okText:noText; }
 function show(no, amt, bank){
-  $('no').value = no || ''; $('amt').value = amt!=null ? amt.toFixed(2) : '';
+  $('no').value = no || ''; $('amt').value = amt!=null ? fmt(amt) : '';
   $('bank').value = bank ? BANKS[bank] : '';
   note('noN', no, 'อ่านได้ · เทียบกับตัวเลขบนเช็คอีกครั้ง', 'อ่านไม่ได้ · พิมพ์เอง');
-  note('amtN', amt!=null, 'อ่านได้ · ถ้าเป็นเช็คเขียนมือ ตรวจให้ดี', 'อ่านไม่ได้ · พิมพ์เอง');
+  note('amtN', amt!=null, 'อ่านได้ · เทียบกับยอดบนเช็คทีละหลัก รวมจุดทศนิยม', 'อ่านไม่ได้ · พิมพ์เอง');
   note('bankN', bank, 'เลือกให้จากรหัสธนาคารในแถบตัวเลขล่าง', 'อ่านไม่ได้ · เลือกเอง');
   $('st').textContent = 'อ่านเสร็จ ตรวจข้อมูลด้านล่าง';
   $('review').style.display = 'block'; $('review').scrollIntoView({behavior:'smooth'});
@@ -210,8 +233,14 @@ $('go').addEventListener('click', () => {
   if (amt) q.set('prefill_'+Q.amt, amt);
   if ($('bank').value) q.set('prefill_'+Q.bank, $('bank').value);
   if ($('payer').value) q.set('prefill_'+Q.payer, $('payer').value);
+  if ($('payer').value === OTHER){
+    const o = $('other').value.trim();
+    if (!o){ alert('เลือก อื่น ๆ แล้ว ต้องพิมพ์ชื่อผู้สั่งจ่าย'); $('other').focus(); return; }
+    q.set('prefill_'+Q.other, o);
+  }
   location.href = FORM + '?' + q.toString().replace(/\+/g,'%20');
 });
+$('payer').addEventListener('change', () => { const on = $('payer').value === OTHER; $('otherBox').hidden = !on; if (on) $('other').focus(); });
 $('again').addEventListener('click', () => { $('cam').value=''; $('cam').click(); });
 </script>
 </body>
