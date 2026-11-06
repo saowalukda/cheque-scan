@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>สแกนเช็ค</title>
+<!-- ร่างหน้าสแกนเช็ค (ฟอร์ม ① ส่งเช็ค) · อ่านรูปบนมือถือเท่านั้น ไม่ส่งรูปออกไปที่ไหน -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1d2330;--mute:#667085;--line:#d0d5dd;--acc:#1456f0;--warn:#b54708;--ok:#067647}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Sukhumvit Set","Noto Sans Thai",sans-serif}
+main{max-width:520px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:4px 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+.step{font-size:13px;color:var(--mute);margin-bottom:6px}
+.btn{display:block;width:100%;padding:14px;border:0;border-radius:10px;font-size:17px;font-weight:600;background:var(--acc);color:#fff;text-align:center;cursor:pointer}
+.btn.sec{background:#fff;color:var(--acc);border:1px solid var(--acc)}
+.btn:disabled{opacity:.5}
+label{display:block;font-weight:600;margin:12px 0 4px}
+input,select{width:100%;padding:12px;font-size:17px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+.hint{font-size:13px;color:var(--mute)}
+.chk{font-size:13px;color:var(--warn)}
+.okk{font-size:13px;color:var(--ok)}
+img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
+.bar{height:6px;background:#e4e7ec;border-radius:3px;overflow:hidden;margin-top:10px;display:none}
+.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+#review{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>📷 สแกนเช็ค → ส่งเช็ค</h1>
+
+<div class="card">
+  <div class="step">ขั้นที่ 1</div>
+  <label for="cam" class="btn">ถ่ายรูปเช็ค</label>
+  <input id="cam" type="file" accept="image/*" capture="environment" hidden>
+  <p class="hint">ถ่ายด้านหน้าเช็คให้เห็นทั้งใบ ตรง ๆ แสงพอ เห็นแถบตัวเลขด้านล่างชัด</p>
+  <img id="pv" alt="รูปเช็ค">
+  <div class="bar" id="bar"><i></i></div>
+  <p class="hint" id="st"></p>
+</div>
+
+<div class="card" id="review">
+  <div class="step">ขั้นที่ 2 · ตรวจและแก้ให้ถูกก่อนกดยืนยัน</div>
+  <label for="no">เลขที่เช็ค</label>
+  <input id="no" inputmode="numeric" autocomplete="off">
+  <div id="noN" class="chk"></div>
+
+  <label for="amt">จำนวนเงิน (บาท)</label>
+  <input id="amt" inputmode="decimal" autocomplete="off">
+  <div id="amtN" class="chk"></div>
+
+  <label for="bank">ธนาคาร</label>
+  <select id="bank"></select>
+  <div id="bankN" class="chk"></div>
+
+  <label for="payer">ผู้สั่งจ่าย</label>
+  <select id="payer"></select>
+  <div class="hint">ระบบยังอ่านชื่อผู้สั่งจ่ายไม่ได้ กดเลือกเอง</div>
+
+  <div style="height:16px"></div>
+  <button class="btn" id="go">ยืนยัน → เปิดฟอร์มส่งเช็ค</button>
+  <p class="hint">ฟอร์มจะเปิดพร้อมข้อมูลที่กรอกไว้ · <b>แนบรูปเช็คอีกครั้งในฟอร์ม</b> แล้วกดส่ง</p>
+  <button class="btn sec" id="again" style="margin-top:8px">ถ่ายใหม่</button>
+</div>
+</main>
+
+<script>
+const FORM = "https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpWkaC5DNj54uJTvQwigYrhc";
+// ชื่อคำถามในฟอร์ม (ทดสอบแล้ว: prefill ด้วยชื่อคำถามใช้ได้)
+const Q = {no:"เลขที่เช็ค", amt:"จำนวนเงิน (บาท)", bank:"ธนาคาร", payer:"ผู้สั่งจ่าย"};
+// รหัสธนาคาร 3 หลักในแถบ MICR → ตัวเลือกในฟอร์ม
+const BANKS = {
+ "002":"ธนาคารกรุงเทพ (BBL)","004":"ธนาคารกสิกรไทย (KBank)","006":"ธนาคารกรุงไทย (KTB)",
+ "011":"ธนาคารทหารไทยธนชาต (ttb)","014":"ธนาคารไทยพาณิชย์ (SCB)","017":"ซิตี้แบงก์ (Citibank)",
+ "022":"ธนาคารซีไอเอ็มบี ไทย (CIMB Thai)","024":"ธนาคารยูโอบี (UOB)","025":"ธนาคารกรุงศรีอยุธยา (Krungsri)",
+ "030":"ธนาคารออมสิน (GSB)","031":"ธนาคารเอชเอสบีซี (HSBC)","034":"ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.)",
+ "067":"ธนาคารทิสโก้ (TISCO)","069":"ธนาคารเกียรตินาคินภัทร (KKP)","070":"ธนาคารไอซีบีซี (ไทย) (ICBC)",
+ "073":"ธนาคารแลนด์ แอนด์ เฮ้าส์ (LH Bank)"
+};
+const BANK_OPTS = [...new Set(Object.values(BANKS))].concat("ธนาคารอื่น ๆ (Other)");
+const PAYERS = ["AIA","เมืองไทยประกันชีวิต (Muang Thai Life)","ไทยประกันชีวิต (Thai Life)","FWD ประกันชีวิต",
+ "อลิอันซ์ อยุธยา (Allianz Ayudhya)","กรุงไทย-แอกซ่า (Krungthai-AXA)","ไทยประกันสุขภาพ (Thai Health Insurance)",
+ "กรุงเทพประกันภัย (Bangkok Insurance)","เมืองไทยประกันภัย (Muang Thai Insurance)","ทิพยประกันภัย (Dhipaya)",
+ "วิริยะประกันภัย (Viriyah)","ชับบ์ไลฟ์ (Chubb Life)","เจนเนอราลี่ (Generali)","โตเกียวมารีน (Tokio Marine)",
+ "เอ็ม เอส ไอ จี (MSIG)","อื่น ๆ (ระบุ)"];
+const $ = id => document.getElementById(id);
+const fill = (sel, opts) => { sel.innerHTML = '<option value="">— เลือก —</option>' + opts.map(o=>`<option>${o}</option>`).join(''); };
+fill($('bank'), BANK_OPTS); fill($('payer'), PAYERS);
+
+let worker;
+async function getWorker(){
+  if (worker) return worker;
+  worker = await Tesseract.createWorker('eng', 1, {logger: m => {
+    if (m.status === 'recognizing text') $('bar').firstChild.style.width = Math.round(m.progress*100)+'%';
+  }});
+  return worker;
+}
+
+// ย่อรูป ทำขาวดำ คืน canvas ทั้งใบ และแถบล่าง (แถบ MICR)
+function prep(img){
+  const W = Math.min(2000, img.naturalWidth), s = W / img.naturalWidth, H = Math.round(img.naturalHeight*s);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'); g.drawImage(img,0,0,W,H);
+  const d = g.getImageData(0,0,W,H), p = d.data;
+  for (let i=0;i<p.length;i+=4){ const y = .299*p[i]+.587*p[i+1]+.114*p[i+2]; p[i]=p[i+1]=p[i+2]=y; }
+  g.putImageData(d,0,0);
+  const sh = Math.round(H*0.22), strip = document.createElement('canvas');
+  strip.width = W; strip.height = sh; strip.getContext('2d').drawImage(c,0,H-sh,W,sh,0,0,W,sh);
+  return {full:c, strip};
+}
+
+// แถบ MICR เช็คไทย: [เลขที่เช็ค 7-8 หลัก] [รหัสธนาคาร 3 + สาขา 4] [เลขบัญชี]
+function parseMicr(t){
+  const runs = (t.replace(/[^0-9]+/g,' ').match(/\d+/g) || []);
+  let no = null, bank = null;
+  // สัญลักษณ์ ⑆ ⑈ มักถูกอ่านเป็นเลข 1 ติดหัว/ท้าย · เลขที่เช็คไทยมี 7 หลัก
+  const fix = r => { let x = r; while (x.length>7 && x[0]==='1') x = x.slice(1); while (x.length>7 && x.endsWith('1')) x = x.slice(0,-1); return x; };
+  for (const r0 of runs){
+    const r = r0.length>7 && r0.length<=9 && !no ? fix(r0) : r0;
+    if (!no && (r.length===7 || r.length===8)) { no = r; continue; }
+    if (no && !bank && r.length>=3 && BANKS[r.slice(0,3)]) { bank = r.slice(0,3); break; }
+  }
+  if (!bank) for (const r of runs) if (r.length===7 && BANKS[r.slice(0,3)] && r!==no) { bank = r.slice(0,3); break; }
+  return {no, bank};
+}
+
+// ยอดเงิน: หาตัวเลขแบบ 50,000.00 ที่ใหญ่ที่สุด
+function parseAmount(t){
+  const m = t.replace(/[Oo]/g,'0').match(/\d{1,3}(?:[,\s]\d{3})*\.\d{2}|\d{4,9}\.\d{2}/g) || [];
+  const v = m.map(x=>parseFloat(x.replace(/[,\s]/g,''))).filter(x=>x>0 && x<1e9);
+  return v.length ? Math.max(...v) : null;
+}
+
+$('cam').addEventListener('change', e => { const f = e.target.files[0]; if (f) run(URL.createObjectURL(f)); });
+async function run(url){
+  const img = $('pv');
+  img.src = url; img.style.display = 'block';
+  await img.decode();
+  $('review').style.display = 'none';
+  $('bar').style.display = 'block'; $('bar').firstChild.style.width = '0';
+  $('st').textContent = 'กำลังอ่านเช็ค… (ครั้งแรกอาจใช้เวลา 10–20 วินาที)';
+  try {
+    const w = await getWorker(), {full, strip} = prep(img);
+    await w.setParameters({tessedit_char_whitelist:'0123456789'});
+    const micr = (await w.recognize(strip)).data.text;
+    await w.setParameters({tessedit_char_whitelist:''});
+    const all = (await w.recognize(full)).data.text;
+    const {no, bank} = parseMicr(micr + ' ' + all), amt = parseAmount(all);
+    show(no, amt, bank);
+  } catch(err){
+    $('st').textContent = 'อ่านไม่สำเร็จ กรอกเองได้ด้านล่าง'; show(null,null,null);
+  }
+  $('bar').style.display = 'none';
+}
+
+function note(id, ok, okText, noText){ const n=$(id); n.className = ok?'okk':'chk'; n.textContent = ok?okText:noText; }
+function show(no, amt, bank){
+  $('no').value = no || ''; $('amt').value = amt!=null ? amt.toFixed(2) : '';
+  $('bank').value = bank ? BANKS[bank] : '';
+  note('noN', no, 'อ่านได้ · เทียบกับตัวเลขบนเช็คอีกครั้ง', 'อ่านไม่ได้ · พิมพ์เอง');
+  note('amtN', amt!=null, 'อ่านได้ · ถ้าเป็นเช็คเขียนมือ ตรวจให้ดี', 'อ่านไม่ได้ · พิมพ์เอง');
+  note('bankN', bank, 'เลือกให้จากรหัสธนาคารในแถบตัวเลขล่าง', 'อ่านไม่ได้ · เลือกเอง');
+  $('st').textContent = 'อ่านเสร็จ ตรวจข้อมูลด้านล่าง';
+  $('review').style.display = 'block'; $('review').scrollIntoView({behavior:'smooth'});
+}
+
+$('go').addEventListener('click', () => {
+  const no = $('no').value.replace(/\D/g,''), amt = $('amt').value.replace(/[^\d.]/g,'');
+  if (!no){ alert('กรอกเลขที่เช็คก่อน'); $('no').focus(); return; }
+  const q = new URLSearchParams();
+  q.set('prefill_'+Q.no, no);
+  if (amt) q.set('prefill_'+Q.amt, amt);
+  if ($('bank').value) q.set('prefill_'+Q.bank, $('bank').value);
+  if ($('payer').value) q.set('prefill_'+Q.payer, $('payer').value);
+  location.href = FORM + '?' + q.toString().replace(/\+/g,'%20');
+});
+$('again').addEventListener('click', () => { $('cam').value=''; $('cam').click(); });
+</script>
+</body>
+</html>
