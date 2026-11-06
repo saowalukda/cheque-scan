@@ -56,6 +56,10 @@ img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
   <select id="bank"></select>
   <div id="bankN" class="chk"></div>
 
+  <label for="dt">วันที่บนเช็ค</label>
+  <input id="dt" type="date">
+  <div id="dtN" class="chk"></div>
+
   <label for="payer">ผู้สั่งจ่าย</label>
   <select id="payer"></select>
   <div id="payerN" class="chk"></div>
@@ -76,6 +80,8 @@ const FORM = "https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpWkaC5DNj54uJ
 // ชื่อคำถามในฟอร์ม (ทดสอบแล้ว: prefill ด้วยชื่อคำถามใช้ได้)
 const Q = {no:"เลขที่เช็ค", amt:"จำนวนเงิน (บาท)", bank:"ธนาคาร", payer:"ผู้สั่งจ่าย", other:"ระบุชื่อผู้สั่งจ่าย"};
 const OTHER = "อื่น ๆ (ระบุ)";
+const DATE_SEP = "/";   // รูปแบบวันที่ที่ฟอร์ม Lark รับ: 2026/11/06
+Q.date = "วันที่บนเช็ค";
 // รหัสธนาคาร 3 หลักในแถบ MICR → ตัวเลือกในฟอร์ม
 const BANKS = {
  "002":"ธนาคารกรุงเทพ (BBL)","004":"ธนาคารกสิกรไทย (KBank)","006":"ธนาคารกรุงไทย (KTB)",
@@ -207,6 +213,62 @@ function payeeOk(t){
   const flat = t.replace(/\s+/g,'');
   return /สมิติ|มิติเวช|สม.{0,8}เวช|โรงพยาบาลสม|SAMITI|AMITIVE|MITIVEJ/i.test(flat);
 }
+// วันที่บนเช็ค: ช่องตัวเลข 8 ช่อง (วว ดด ปปปป พ.ศ.) · 06/11/2569 · 20 กันยายน 2547
+const TH_M = ['มกรา','กุมภา','มีนา','เมษา','พฤษภา','มิถุนา','กรกฎา','สิงหา','กันยา','ตุลา','พฤศจิกา','ธันวา'];
+const TH_MS = ['ม.ค','ก.พ','มี.ค','เม.ย','พ.ค','มิ.ย','ก.ค','ส.ค','ก.ย','ต.ค','พ.ย','ธ.ค'];
+function mkDate(d, m, y){
+  d = +d; m = +m; y = +y;
+  if (y < 100) y += (y > 40 ? 2500 : 2000);            // ปี 2 หลัก: 69 → 2569
+  if (y > 2400) y -= 543;                               // พ.ศ. → ค.ศ.
+  if (y < 2000 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const t = new Date(Date.UTC(y, m-1, d));
+  return t.getUTCDate() === d ? t.toISOString().slice(0,10) : null;
+}
+function lev(a, b){
+  const d = Array.from({length: a.length+1}, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1] + (a[i-1]===b[j-1]?0:1));
+  return d[a.length][b.length];
+}
+function monthOf(w){
+  w = (w||'').replace(/[^ก-๙]/g,''); if (w.length < 3) return null;
+  let best = null, bd = 3;
+  TH_M.forEach((k, i) => { const d = lev(w.replace(/(ยน|คม|พันธ์|าคม)$/,'').slice(0, k.length+1), k); if (d < bd) { bd = d; best = i; } });
+  return best;
+}
+let monthGuess = null;
+function parseDate(texts){
+  monthGuess = null;
+  for (const t of texts) for (const w of t.split(/\s+/)) { const m = monthOf(w); if (m != null) { monthGuess = m; break; } }
+  // ตัวเลขจากรอบอ่านอังกฤษก่อน (ไทยมักอ่านปีผิด เช่น 2547 → 2561)
+  texts = [...texts].sort((a, b) => (/[ก-๙]/.test(a) ? 1 : 0) - (/[ก-๙]/.test(b) ? 1 : 0));
+  for (const t of texts){
+    const lines = t.split('\n');
+    // 1) แถวที่มี Date/วันที่ แล้วตามด้วยตัวเลข 8 หลัก (ช่องละตัว อาจมีช่องว่างคั่น)
+    for (const l of lines) if (/date|วันที่|วนท/i.test(l)){
+      const dg = l.replace(/[Oo]/g,'0').replace(/[^0-9]/g,'');
+      for (let i = 0; i + 8 <= dg.length; i++){ const r = mkDate(dg.slice(i,i+2), dg.slice(i+2,i+4), dg.slice(i+4,i+8)); if (r) return r; }
+    }
+    // 2) 06/11/2569 · 6-11-69 · 06.11.2026
+    for (const m of t.matchAll(/(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{4}|\d{2})(?!\d)/g)){ const r = mkDate(m[1], m[2], m[3]); if (r) return r; }
+    // 3) 20 กันยายน 2547: วันกับปีเอาจากรอบอ่านอังกฤษ (ตัวเลขแม่นกว่า) เดือนเอาจากรอบอ่านไทย
+    for (const m of t.matchAll(/(\d{1,2})\s*([^\d\s]{2,12})\s*(25\d\d|20\d\d)(?!\d)/g)){
+      const mo = monthOf(m[2]) ?? monthGuess;
+      if (mo != null){ const r = mkDate(m[1], mo+1, m[3]); if (r) return r; }
+    }
+    const flat = t.replace(/\s+/g,' ');
+    for (let k = 0; k < 12; k++){
+      for (const key of [TH_M[k], TH_MS[k]]){
+        const i = flat.indexOf(key); if (i < 0) continue;
+        const pre = flat.slice(Math.max(0,i-6), i).match(/(\d{1,2})\D*$/), post = flat.slice(i, i+20).match(/(\d{4}|\d{2})/);
+        if (pre && post){ const r = mkDate(pre[1], k+1, post[1]); if (r) return r; }
+      }
+    }
+  }
+  return null;
+}
+const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset()*6e4).toISOString().slice(0,10); };
 const parseAmount = t => pickAmount(amountCands(t));
 const fmt = v => v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
@@ -257,19 +319,40 @@ async function run(url){
     // 3) ผู้สั่งจ่าย: อ่านภาษาไทยบนตัวเช็ค แล้วจับคู่กับรายชื่อบริษัทประกัน
     const tt = (await wt.recognize(full)).data.text; raw += 'THA>> ' + tt + '\n';
     const payer = findPayer(tt + '\n' + rr.text + '\n' + r1.text);
+    // 4) วันที่: อ่านซ้ำเฉพาะแถววันที่ แบบตัวเลขล้วน และแบบภาษาไทย (ชื่อเดือน)
+    const dl = ls.find(l => /date|วันที่/i.test(l.text) && /\d/.test(l.text)) || ls.find(l => /(25|20)\d\d\b/.test(l.text) && !/\*\*/.test(l.text));
+    const extra = [];
+    if (dl){
+      const c = crop(src, dl.bbox, 0.5, 0.02);
+      extra.push((await wt.recognize(c)).data.text);
+      await we.setParameters({tessedit_char_whitelist: '0123456789/.- '});
+      extra.push('Date ' + (await we.recognize(c)).data.text);
+      await we.setParameters({tessedit_char_whitelist: ''});
+      raw += 'DATE>> ' + extra.join(' | ') + '\n';
+    }
+    const date = parseDate([...extra, rr.text, r1.text, tt]);
     const toUs = payeeOk(tt + '\n' + rr.text + '\n' + r1.text);
     if (!amt && src !== full) amt = parseAmount(lines.filter(l => l !== micrLine).map(l => l.text).join('\n'));
     raw += 'MICR>> ' + micr + '\nALL>> ' + r1.text;
-    show(no, amt, bank, payer, toUs);
+    show(no, amt, bank, payer, toUs, date);
   } catch(err){
     raw += 'ERR ' + err;
-    $('st').textContent = 'อ่านไม่สำเร็จ กรอกเองได้ด้านล่าง'; show(null,null,null,null,true);
+    $('st').textContent = 'อ่านไม่สำเร็จ กรอกเองได้ด้านล่าง'; show(null,null,null,null,true,null);
   }
   $('bar').style.display = 'none';
 }
 
 function note(id, ok, okText, noText){ const n=$(id); n.className = ok?'okk':'chk'; n.textContent = ok?okText:noText; }
-function show(no, amt, bank, payer, toUs){
+function show(no, amt, bank, payer, toUs, date){
+  $('dt').value = date || todayISO();
+  if (!date) note('dtN', false, '', 'อ่านวันที่ไม่ได้ · ใส่วันนี้ไว้ให้ ตรวจกับเช็คแล้วแก้');
+  else {
+    // เช็คใช้ได้ 6 เดือนนับจากวันที่บนเช็ค · ลงวันที่ล่วงหน้าฝากก่อนวันนั้นไม่ได้
+    const days = (new Date(todayISO()) - new Date(date)) / 864e5;
+    if (days > 183) note('dtN', false, '', '⚠️ อ่านได้ · เช็คลงวันที่เกิน 6 เดือน อาจหมดอายุ ตรวจกับเช็ค');
+    else if (days < 0) note('dtN', false, '', '⚠️ อ่านได้ · เช็คลงวันที่ล่วงหน้า ยังนำฝากไม่ได้จนถึงวันนั้น');
+    else note('dtN', true, 'อ่านได้ · ปี พ.ศ. แปลงให้แล้ว ตรวจกับเช็คอีกครั้ง', '');
+  }
   $('payeeN').hidden = toUs;
   $('payeeN').innerHTML = '⚠️ <b>ไม่พบชื่อ "สมิติเวช" ในบรรทัด จ่าย/Pay</b><br>เช็คนี้อาจไม่ได้สั่งจ่ายโรงพยาบาล ตรวจชื่อผู้รับเงินบนเช็คก่อนส่ง ถ้าไม่ใช่สมิติเวช อย่ารับเช็ค';
   $('no').value = no || ''; $('amt').value = amt!=null ? fmt(amt) : '';
@@ -295,6 +378,7 @@ $('go').addEventListener('click', () => {
   if (amt) q.set('prefill_'+Q.amt, amt);
   if ($('bank').value) q.set('prefill_'+Q.bank, $('bank').value);
   if ($('payer').value) q.set('prefill_'+Q.payer, $('payer').value);
+  if ($('dt').value) q.set('prefill_'+Q.date, $('dt').value.replace(/-/g, DATE_SEP));
   if ($('payer').value === OTHER){
     const o = $('other').value.trim();
     if (!o){ alert('เลือก อื่น ๆ แล้ว ต้องพิมพ์ชื่อผู้สั่งจ่าย'); $('other').focus(); return; }
