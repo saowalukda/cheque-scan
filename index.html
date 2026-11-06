@@ -57,7 +57,7 @@ img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
 
   <label for="payer">ผู้สั่งจ่าย</label>
   <select id="payer"></select>
-  <div class="hint">ระบบยังอ่านชื่อผู้สั่งจ่ายไม่ได้ กดเลือกเอง</div>
+  <div id="payerN" class="chk"></div>
   <div id="otherBox" hidden>
     <label for="other">ระบุชื่อผู้สั่งจ่าย</label>
     <input id="other" autocomplete="off" placeholder="พิมพ์ชื่อบริษัท / ผู้สั่งจ่าย">
@@ -94,13 +94,15 @@ const $ = id => document.getElementById(id);
 const fill = (sel, opts) => { sel.innerHTML = '<option value="">— เลือก —</option>' + opts.map(o=>`<option>${o}</option>`).join(''); };
 fill($('bank'), BANK_OPTS); fill($('payer'), PAYERS);
 
-let wEng, wMicr;
+let wEng, wMicr, wTha;
 const prog = m => { if (m.status === 'recognizing text') $('bar').firstChild.style.width = Math.round(m.progress*100)+'%'; };
 async function workers(){
   if (!wEng) wEng = await Tesseract.createWorker('eng', 1, {logger: prog});
   // ไฟล์ฝึกอ่านฟอนต์ MICR (E-13B) วางไว้ข้างหน้าเว็บ · A=⑆ B=⑇ C=⑈ D=⑉
   if (!wMicr) wMicr = await Tesseract.createWorker('e13b', 1, {logger: prog, langPath: new URL('.', location.href).href, gzip: false});
-  return [wEng, wMicr];
+  // ภาษาไทย (ฉบับเล็ก 1 MB) สำหรับอ่านชื่อผู้สั่งจ่าย
+  if (!wTha) wTha = await Tesseract.createWorker('tha', 1, {logger: prog, langPath: new URL('.', location.href).href, gzip: false});
+  return [wEng, wMicr, wTha];
 }
 
 // ขาวดำ + ขยายให้กว้างอย่างน้อย 2000px
@@ -124,8 +126,8 @@ const digits = s => (s.match(/\d/g)||[]).length;
 // แถบ MICR เช็คไทย: …[เลขที่เช็ค]⑈ [ธนาคาร 3]⑆[สาขา 4]⑈ [เลขบัญชี]…
 function parseMicr(t){
   const s = t.replace(/\s+/g,'');
-  let m = s.match(/(\d{7,8})[A-D]+(\d{3})[A-D]+(\d{4})/);            // เลขเช็ค ⑈ ธนาคาร ⑆ สาขา
-  if (m && BANKS[m[2]]) return {no: m[1], bank: m[2]};
+  let m = s.match(/(\d{7,8})[A-D]+(\d{2,3})[A-D]+(\d{3,4})/);       // เลขเช็ค ⑈ ธนาคาร ⑆ สาขา
+  if (m && BANKS[m[2].padStart(3,'0')]) return {no: m[1], bank: m[2].padStart(3,'0')};
   m = s.match(/(\d{7,8})\D{0,3}(\d{3})\D{0,3}\d{4}/);
   if (m && BANKS[m[2]]) return {no: m[1], bank: m[2]};
   const runs = s.split(/[^0-9]+/).filter(Boolean);
@@ -144,20 +146,60 @@ function amountCands(t){
   t = t.replace(/[Oo]/g,'0').replace(/(\d)\s*([,.])\s*(\d)/g,'$1$2$3');
   const c = [];
   for (const m of t.matchAll(/\d[\d,.]*\d/g)){
-    const x = m[0]; let v = null, dec = false, mm;
+    const x = m[0], star = /[*฿B]/.test(t.slice(Math.max(0, m.index-3), m.index)); let v = null, dec = false, mm;
     if ((mm = x.match(/^(\d{1,3}(?:[.,]?\d{3})*)[.,](\d{2})$/))) { v = parseFloat(mm[1].replace(/[.,]/g,'') + '.' + mm[2]); dec = true; }
     // ยอดพิมพ์มี *** ล้อม: ดาวท้ายมักถูกอ่านเป็นเลข 1 หลัก (310,826.593 / 310,826,591) → ตัดทิ้ง
-    else if (/\*/.test(t.slice(Math.max(0, m.index-3), m.index)) && (mm = x.match(/^(\d{1,3}(?:[.,]?\d{3})*)[.,](\d{2})\d$/))) { v = parseFloat(mm[1].replace(/[.,]/g,'') + '.' + mm[2]); dec = true; }
+    else if (star && (mm = x.match(/^(\d{1,3}(?:[.,]?\d{3})*)[.,](\d{2})\d$/))) { v = parseFloat(mm[1].replace(/[.,]/g,'') + '.' + mm[2]); dec = true; }
     else if (/^\d{1,3}(,\d{3})+$/.test(x)) v = parseFloat(x.replace(/,/g,''));
-    if (v && v >= 1 && v < 1e9) c.push({v, dec});
+    // คะแนน: มีทศนิยม +2 · มีลูกน้ำหลักพัน +2 · อยู่หลัง *** หรือ ฿ +3
+    // ดาว *** อ่านเป็นเลข 2 ได้บ่อย: เลขซ้ำติดกันยาว ๆ หน้ายอด = น่าสงสัย
+    const odd = /^(\d)\1{2,}/.test(x.replace(/[,.]/g,'')) || (!/,/.test(x) && Math.floor(v) >= 100000);
+    if (v && v >= 1 && v < 1e9) c.push({v, odd, score: (dec?2:0) + (/,\d{3}/.test(x)?2:0) + (star?3:0) - (odd?3:0)});
   }
   return c;
 }
+let amtSure = true;
 function pickAmount(c){
-  const d = c.filter(o => o.dec), pool = d.length ? d : c;
-  if (!pool.length) return null;
-  const n = {}; pool.forEach(o => n[o.v] = (n[o.v]||0) + 1);
-  return +Object.keys(n).sort((a,b) => n[b]-n[a] || b-a)[0];
+  amtSure = false;
+  if (!c.length) return null;
+  const n = {}; c.forEach(o => n[o.v] = (n[o.v]||0) + o.score + 1);
+  const k = Object.keys(n).sort((a,b) => n[b]-n[a] || b-a);
+  const top = c.filter(o => o.v == k[0]);
+  // มั่นใจเมื่อค่าอันดับ 1 ไม่น่าสงสัย และคะแนนทิ้งอันดับ 2 อย่างน้อย 2 เท่า
+  amtSure = !top.some(o => o.odd) && (k.length < 2 || n[k[0]] >= 2*n[k[1]]);
+  return +k[0];
+}
+// ผู้สั่งจ่าย: คำที่ใช้จับคู่ (ไทย/อังกฤษ) ตัดช่องว่างก่อนเทียบ เพราะ OCR ไทยมักแยกคำผิด
+const PAYER_KEYS = [
+ ["เมืองไทยประกันชีวิต (Muang Thai Life)", /เมืองไทยประกันชีวิต|MUANGTHAILIFE/i],
+ ["เมืองไทยประกันภัย (Muang Thai Insurance)", /เมืองไทยประกันภัย|MUANGTHAIINSUR/i],
+ ["ไทยประกันสุขภาพ (Thai Health Insurance)", /ไทยประกันสุขภาพ|THAIHEALTHINSUR/i],
+ ["ไทยประกันชีวิต (Thai Life)", /ไทยประกันชีวิต|THAILIFEINSUR/i],
+ ["กรุงไทย-แอกซ่า (Krungthai-AXA)", /แอกซ่า|AXA/i],
+ ["อลิอันซ์ อยุธยา (Allianz Ayudhya)", /อลิอันซ์|ALLIANZ/i],
+ ["กรุงเทพประกันภัย (Bangkok Insurance)", /กรุงเทพประกันภัย|BANGKOKINSUR/i],
+ ["ทิพยประกันภัย (Dhipaya)", /ทิพยประกัน|DHIPAYA/i],
+ ["วิริยะประกันภัย (Viriyah)", /วิริยะ|VIRIYAH/i],
+ ["ชับบ์ไลฟ์ (Chubb Life)", /ชับบ์|CHUBB/i],
+ ["เจนเนอราลี่ (Generali)", /เจนเนอราลี|GENERALI/i],
+ ["โตเกียวมารีน (Tokio Marine)", /โตเกียวมารีน|TOKIOMARINE/i],
+ ["เอ็ม เอส ไอ จี (MSIG)", /เอ็มเอสไอจี|MSIG/i],
+ ["FWD ประกันชีวิต", /FWD/],
+ ["AIA", /เอไอเอ|\bAIA\b|AIACOMPANY/],
+];
+function findPayer(t){
+  const flat = t.replace(/\s+/g,'');
+  for (const [name, re] of PAYER_KEYS) if (re.test(flat) || re.test(t)) return {name};
+  // ไม่ตรงรายชื่อ: ถ้ามีชื่อบริษัท (บริษัท … จำกัด) ที่ไม่ใช่ธนาคาร/โรงพยาบาล ให้เลือก อื่น ๆ แล้วเติมชื่อให้
+  for (const line of t.split('\n')){
+    const m = line.match(/บริษัท.{2,60}?จำกัด(?:\s*\(มหาชน\))?/);
+    if (m && !/ธนาคาร|สมิติเวช/.test(m[0])) return {name: OTHER, other: m[0].replace(/\s+/g,' ').trim()};
+  }
+  for (const line of t.split('\n')){
+    const m = line.match(/[A-Z][A-Za-z&.'\- ]{2,60}?(?:Co\.?,?\s*Ltd\.?|Company\s+Limited|PCL|Public\s+Company)/);
+    if (m && !/Bank|Samitivej/i.test(m[0])) return {name: OTHER, other: m[0].replace(/\s+/g,' ').trim()};
+  }
+  return null;
 }
 const parseAmount = t => pickAmount(amountCands(t));
 const fmt = v => v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -172,7 +214,7 @@ async function run(url){
   $('st').textContent = 'กำลังอ่านเช็ค… (ครั้งแรกอาจใช้เวลา 10–30 วินาที)';
   let raw = '';
   try {
-    const [we, wm] = await workers(), full = gray(img);
+    const [we, wm, wt] = await workers(), full = gray(img);
     // 1) อ่านทั้งรูป หาแถวแถบ MICR (แถวที่มีตัวเลขมากที่สุด) และแถวยอดเงิน
     const r1 = (await we.recognize(full, {}, {blocks: true})).data;
     const lines = (r1.blocks||[]).flatMap(b => b.paragraphs.flatMap(p => p.lines));
@@ -183,14 +225,15 @@ async function run(url){
     let {no, bank} = parseMicr(micr);
     if (!no || !bank){ const p2 = parseMicr(r1.text); no = no || p2.no; bank = bank || p2.bank; }
     if (!bank){ // รหัสธนาคาร 3 หลักตามด้วยสาขา 4 หลัก เช่น 004:1234
-      for (const m of r1.text.matchAll(/(\d{3})\s*[:;|\-]?\s*\d{4}\b/g)) if (BANKS[m[1]]) { bank = m[1]; break; } }
+      for (const m of r1.text.matchAll(/(?<!\d)(\d{3})\s*[:;|\-]\s*\d{4}\b/g)) if (BANKS[m[1]]) { bank = m[1]; break; } }
     // 1b) ถ้าเช็คเล็กในรูป (ถ่ายไกล/มีของอื่นติดมา) ตัดเฉพาะตัวเช็คจากตำแหน่งแถบ MICR แล้วอ่านใหม่
     let src = full, rr = r1, ls = lines;
     if (micrLine){
       const b = micrLine.bbox, mw = b.x1 - b.x0;
       if (mw < full.width*0.7){
-        const cw = mw/0.85, x0 = Math.max(0, b.x0 - cw*0.08), y1 = Math.min(full.height, b.y1 + cw*0.04), y0 = Math.max(0, y1 - cw*0.5);
-        src = gray(full, x0, y0, Math.min(full.width - x0, cw*1.08), y1 - y0, 2400);
+        // เผื่อขอบกว้าง: แถบ MICR ยาวประมาณ 60–85% ของความกว้างเช็ค
+        const cw = mw/0.6, x0 = Math.max(0, b.x0 - cw*0.15), y1 = Math.min(full.height, b.y1 + cw*0.05), y0 = Math.max(0, y1 - cw*0.6);
+        src = gray(full, x0, y0, Math.min(full.width - x0, cw*1.15), y1 - y0, 2400);
         rr = (await we.recognize(src, {}, {blocks: true})).data;
         ls = (rr.blocks||[]).flatMap(b => b.paragraphs.flatMap(p => p.lines));
         raw += 'CROP>> ' + rr.text + '\n';
@@ -201,26 +244,36 @@ async function run(url){
     const cands = amountCands(ls.filter(l => l !== micrInSrc).map(l => l.text).join('\n'));
     const amtLines = ls.filter(l => l !== micrInSrc && /\*{2,}|฿|\d[.,]\d{2}\b/.test(l.text));
     await we.setParameters({tessedit_char_whitelist: '0123456789,.*'});
-    for (const l of amtLines){ const t = (await we.recognize(crop(src, l.bbox, 0.4, 0))).data.text; raw += 'AMT>> '+t+'\n'; cands.push(...amountCands(t), ...amountCands(t)); }
+    for (const l of amtLines){ const t = (await we.recognize(crop(src, l.bbox, 0.4, 0))).data.text; raw += 'AMT>> '+t+'\n'; cands.push(...amountCands(t)); }
+    { const t = (await we.recognize(src)).data.text; raw += 'AMTALL>> '+t+'\n'; cands.push(...amountCands(t)); }
     await we.setParameters({tessedit_char_whitelist: ''});
     let amt = pickAmount(cands);
+    // 3) ผู้สั่งจ่าย: อ่านภาษาไทยบนตัวเช็ค แล้วจับคู่กับรายชื่อบริษัทประกัน
+    const tt = (await wt.recognize(full)).data.text; raw += 'THA>> ' + tt + '\n';
+    const payer = findPayer(tt + '\n' + rr.text + '\n' + r1.text);
     if (!amt && src !== full) amt = parseAmount(lines.filter(l => l !== micrLine).map(l => l.text).join('\n'));
     raw += 'MICR>> ' + micr + '\nALL>> ' + r1.text;
-    show(no, amt, bank);
+    show(no, amt, bank, payer);
   } catch(err){
     raw += 'ERR ' + err;
-    $('st').textContent = 'อ่านไม่สำเร็จ กรอกเองได้ด้านล่าง'; show(null,null,null);
+    $('st').textContent = 'อ่านไม่สำเร็จ กรอกเองได้ด้านล่าง'; show(null,null,null,null);
   }
   $('bar').style.display = 'none';
 }
 
 function note(id, ok, okText, noText){ const n=$(id); n.className = ok?'okk':'chk'; n.textContent = ok?okText:noText; }
-function show(no, amt, bank){
+function show(no, amt, bank, payer){
   $('no').value = no || ''; $('amt').value = amt!=null ? fmt(amt) : '';
   $('bank').value = bank ? BANKS[bank] : '';
   note('noN', no, 'อ่านได้ · เทียบกับตัวเลขบนเช็คอีกครั้ง', 'อ่านไม่ได้ · พิมพ์เอง');
-  note('amtN', amt!=null, 'อ่านได้ · เทียบกับยอดบนเช็คทีละหลัก รวมจุดทศนิยม', 'อ่านไม่ได้ · พิมพ์เอง');
+  note('amtN', amt!=null && amtSure, 'อ่านได้ · เทียบกับยอดบนเช็คทีละหลัก รวมจุดทศนิยม',
+       amt!=null ? '⚠️ ไม่แน่ใจ (ดาว *** อาจถูกอ่านเป็นตัวเลข) · ตรวจและแก้ให้ตรงกับเช็ค' : 'อ่านไม่ได้ · พิมพ์เอง');
   note('bankN', bank, 'เลือกให้จากรหัสธนาคารในแถบตัวเลขล่าง', 'อ่านไม่ได้ · เลือกเอง');
+  $('payer').value = payer ? payer.name : '';
+  $('other').value = payer && payer.other ? payer.other : '';
+  $('otherBox').hidden = $('payer').value !== OTHER;
+  note('payerN', payer, payer && payer.other ? 'อ่านชื่อบริษัทจากเช็ค · ตรวจตัวสะกดอีกครั้ง' : 'อ่านจากชื่อบนเช็ค · ตรวจอีกครั้ง',
+       'ไม่พบชื่อบริษัทประกันบนเช็ค (เช่น เช็คธนาคาร / แคชเชียร์เช็ค) · เลือกเอง');
   $('st').textContent = 'อ่านเสร็จ ตรวจข้อมูลด้านล่าง';
   $('review').style.display = 'block'; $('review').scrollIntoView({behavior:'smooth'});
 }
