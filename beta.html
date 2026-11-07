@@ -44,6 +44,7 @@ a.btn{text-decoration:none;margin-top:8px}
 
 <div class="card">
   <div class="step">ขั้นที่ 1</div>
+  <div id="target" hidden></div>
   <label for="cam" class="btn">ถ่ายรูป / เลือกรูปเช็ค</label>
   <input id="cam" type="file" accept="image/*" hidden>
   <p class="hint" id="camHint">วางเช็คบนโต๊ะ ถ่ายตรง ๆ ให้<b>เช็คเต็มจอ</b> เห็นแถบตัวเลขด้านล่างชัด · ถ่ายเช็คตัวจริง ไม่ถ่ายจากหน้าจอ</p>
@@ -115,6 +116,7 @@ a.btn{text-decoration:none;margin-top:8px}
   <div id="rN"></div>
   <a class="btn sec" id="rRej" target="_blank" rel="noopener">↩️ ตีกลับให้ AR แก้</a>
   <button class="btn sec" id="rAgain" style="margin-top:8px">ถ่ายใหม่</button>
+  <p class="hint" style="margin-top:12px">ถ่ายรูปไม่ได้? <a id="rForm" target="_blank" rel="noopener">กรอกในฟอร์มรับเช็คแทน</a></p>
 </div>
 
 <div class="card" id="dep" style="display:none">
@@ -132,6 +134,7 @@ a.btn{text-decoration:none;margin-top:8px}
   <button class="btn" id="dSend" style="margin-top:14px">🏦 ส่งนำฝาก</button>
   <div id="dN"></div>
   <button class="btn sec" id="dAgain" style="margin-top:8px">ถ่ายใบ Pay-in ใหม่</button>
+  <p class="hint" style="margin-top:12px">ถ่ายรูปไม่ได้? <a href="https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpEs17TR8qt1LaMU9FXzTpmb" target="_blank" rel="noopener">กรอกในฟอร์มนำฝากแทน</a></p>
 </div>
 
 <div class="card" id="done" style="display:none">
@@ -587,7 +590,9 @@ async function toLogin(f, blob){
 async function resume(){
   const h = new URLSearchParams(location.hash.slice(1));
   if (!h.has('session') && !h.has('error')) return;
-  history.replaceState(null, '', location.pathname + location.search);
+  // ลิงก์จากแจ้งเตือน (?no=…) หายตอนล็อกอิน → คืนค่าที่เก็บไว้ก่อนออกไปล็อกอิน
+  let q = location.search; try { q = q || sessionStorage.getItem('cs_q') || ''; sessionStorage.removeItem('cs_q'); } catch(e){}
+  history.replaceState(null, '', location.pathname + q);
   if (h.get('session')) store('cs_session', h.get('session'));
   let p = null; try { p = JSON.parse(sessionStorage.getItem('cs_pending')); sessionStorage.removeItem('cs_pending'); } catch(e){}
   if (!p) return;
@@ -610,7 +615,7 @@ if (WORKER){
 }
 // ── ② รับเช็ค: เทียบรูปเช็คที่การเงินถ่ายกับข้อมูลที่ AR ส่งมา ─────────────────────
 const REJECT_FORM = "https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpVsQ0nejnDqDpsS6hWFhGYe";
-let LIST = null, READ = null, listReady = Promise.resolve();
+let LIST = null, READ = null, listReady = Promise.resolve(), PIN = null;   // PIN = เช็คที่เปิดมาจากแจ้งเตือน
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const bkkDate = ms => ms ? new Date(+ms + 7*3600e3).toISOString().slice(0,10) : '';
 const thDate = iso => iso ? iso.slice(8,10) + '/' + iso.slice(5,7) + '/' + (+iso.slice(0,4) + 543) : '';
@@ -643,12 +648,12 @@ function matchCheque(no, amt){
 function showReceive(no, amt, bank, date, toUs){
   READ = {no, amt: amt, bank: bank ? BANKS[bank] : null, date, toUs, sure: amtSure};
   $('review').style.display = 'none'; $('rcv').style.display = 'block'; $('rN').innerHTML = '';
-  const m = matchCheque(no, amt);
+  const m = PIN ? {item: PIN, how: 'pin', dup: 1} : matchCheque(no, amt);
   const L = LIST || [];
   $('rPick').innerHTML = '<option value="">— เลือกเช็คที่ AR ส่งมา (' + L.length + ' ใบรอรับ) —</option>' +
     L.map(x => `<option value="${esc(x.id)}">${esc(x.no)} · ${fmt(x.amt)} บาท · ${esc(shortBank(x.bank))}${x.dept ? ' · ' + esc(x.dept) : ''}</option>`).join('');
   $('rPick').value = m.item ? m.item.id : '';
-  $('rPickN').textContent = m.how === 'no' ? (m.dup > 1 ? `⚠️ มีเช็คเลขนี้รอรับ ${m.dup} รายการ (ส่งซ้ำ?) เลือกให้ใบที่ยอดตรง` : 'จับคู่จากเลขที่เช็คในรูปให้แล้ว')
+  $('rPickN').textContent = m.how === 'pin' ? 'เช็คใบที่เปิดมาจากแจ้งเตือน · เทียบกับใบนี้' : m.how === 'no' ? (m.dup > 1 ? `⚠️ มีเช็คเลขนี้รอรับ ${m.dup} รายการ (ส่งซ้ำ?) เลือกให้ใบที่ยอดตรง` : 'จับคู่จากเลขที่เช็คในรูปให้แล้ว')
     : m.how === 'near' ? 'เลขที่เช็คที่อ่านได้ต่างไป 1 หลัก จับคู่ให้ใบที่ใกล้ที่สุด · ดูตารางด้านล่าง'
     : m.how === 'amt' ? 'อ่านเลขที่เช็คไม่ได้ จับคู่จากยอดเงินให้ · ดูตารางด้านล่าง'
     : L.length ? 'ไม่พบเช็คใบนี้ในรายการที่รอรับ · ถ้าเป็นใบในรายการ เลือกเองด้านบน' : 'ตอนนี้ไม่มีเช็คที่รอรับ';
@@ -701,7 +706,7 @@ async function receiveSend(){
     const d = await r.json().catch(() => ({}));
     if (d.login){ store('cs_session', null); return toLoginPage(); }
     if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
-    LIST = LIST.filter(x => x !== it);
+    LIST = LIST.filter(x => x !== it); if (PIN === it){ PIN = null; $('target').hidden = true; }
     $('rcv').style.display = 'none'; $('done').style.display = 'block';
     $('doneT').textContent = 'เลขที่เช็ค ' + it.no + ' · ' + fmt(it.amt) + ' บาท · สถานะเปลี่ยนเป็น "รอนำฝาก" · เหลือรอรับ ' + LIST.length + ' ใบ';
     $('done').scrollIntoView({behavior: 'smooth'});
@@ -710,13 +715,13 @@ async function receiveSend(){
   } finally { $('rSend').textContent = '✅ รับเช็คใบนี้'; if ($('rcv').style.display !== 'none') $('rSend').disabled = !$('rOkBox').hidden && !$('rOk').checked;
   }
 }
-const toLoginPage = () => { location.href = WORKER + '/login?p=' + encodeURIComponent(location.pathname.split('/').pop() || 'index.html'); };
+const toLoginPage = () => { try { sessionStorage.setItem('cs_q', location.search); } catch(e){} location.href = WORKER + '/login?p=' + encodeURIComponent(location.pathname.split('/').pop() || 'index.html'); };
 async function initReceive(){
   document.title = 'รับเช็ค'; $('h1').textContent = '📷 รับเช็คจาก AR → เทียบ → รับ';
   $('camHint').innerHTML = 'ถ่ายเช็คตัวจริงที่ได้รับ ให้<b>เช็คเต็มจอ</b> เห็นแถบตัวเลขด้านล่างชัด · ระบบจะเทียบกับข้อมูลที่ AR ส่งมาให้';
   $('loginBtn').onclick = toLoginPage;
   $('doneH').textContent = '✅ รับเช็คแล้ว'; $('next').textContent = 'รับใบต่อไป';
-  $('doneHint').textContent = 'ระบบแจ้งกลุ่ม ③ นำฝากให้แล้ว · เก็บเช็คตัวจริงไว้รอนำฝาก';
+  $('doneHint').textContent = 'ระบบแจ้งกลุ่ม ③ นำฝากให้แล้ว · เก็บเช็คตัวจริงไว้รอนำฝาก · ปิดหน้านี้กลับไป Lark ได้เลย';
   try {
     if (!load('cs_session')){ $('loginBox').style.display = 'block'; return; }
     $('st').textContent = 'กำลังดึงรายการเช็คที่รอรับ…';
@@ -724,6 +729,17 @@ async function initReceive(){
     if (!LIST){ $('loginBox').style.display = 'block'; $('st').textContent = ''; return; }
     $('loginBox').style.display = 'none';
     $('st').textContent = 'รอรับ ' + LIST.length + ' ใบ' + (load('cs_name') ? ' · ' + load('cs_name') : '');
+    // เปิดมาจากปุ่มในแจ้งเตือน: ?no=เลขที่เช็ค&ref=CHK-…
+    const QP = new URLSearchParams(location.search), qno = (QP.get('no') || '').replace(/\D/g, ''), qref = QP.get('ref') || '';
+    if (qno){
+      PIN = LIST.find(x => x.no === qno && (!qref || x.ref === qref)) || LIST.find(x => x.no === qno) || null;
+      $('target').hidden = false;
+      $('target').innerHTML = PIN
+        ? `<div class="good" style="margin-bottom:10px">📌 <b>กำลังรับเช็คเลขที่ ${esc(PIN.no)}</b><br>${fmt(PIN.amt)} บาท · ${esc(shortBank(PIN.bank))}${PIN.payer ? ' · ' + esc(PIN.payer) : ''}<br><span class="hint">ส่งโดย ${esc(PIN.by || '—')}${PIN.dept ? ' · ' + esc(PIN.dept) : ''} · ${esc(PIN.ref)}</span></div>`
+        : `<div class="warn">เช็คเลขที่ ${esc(qno)} ไม่อยู่ในรายการรอรับแล้ว (อาจรับไปแล้ว ถูกตีกลับ หรือยกเลิก) · ถ่ายเช็คที่ได้รับเพื่อหาจากรายการทั้งหมดได้</div>`;
+    }
+    const fq = new URLSearchParams(PIN ? {'prefill_เลขที่เช็ค': PIN.no} : {});
+    $('rForm').href = 'https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpqkai0wiq376769Og3rc0Oc' + (PIN ? '?' + fq.toString().replace(/\+/g, '%20') : '');
   } catch(e){ $('st').textContent = '❌ ดึงรายการไม่สำเร็จ: ' + e.message + ' · รีเฟรชหน้า'; }
 }
 $('rPick').addEventListener('change', renderCmp);
@@ -936,7 +952,7 @@ async function initDeposit(){
   $('loginBtn').onclick = toLoginPage;
   $('loginBox').querySelector('p').textContent = 'เข้าสู่ระบบ Lark ก่อน 1 ครั้ง เพื่อดึงรายการเช็คที่รอนำฝาก';
   $('doneH').textContent = '✅ ส่งนำฝากแล้ว'; $('next').textContent = 'นำฝากใบ Pay-in ถัดไป';
-  $('doneHint').textContent = 'ระบบเปลี่ยนสถานะเช็คเป็น "นำฝากแล้ว" เทียบยอด และแจ้งกลุ่มให้แล้ว · รอ Treasury ยืนยันเงินเข้า';
+  $('doneHint').textContent = 'ระบบเปลี่ยนสถานะเช็คเป็น "นำฝากแล้ว" เทียบยอด และแจ้งกลุ่มให้แล้ว · รอ Treasury ยืนยันเงินเข้า · ปิดหน้านี้กลับไป Lark ได้เลย';
   try {
     if (!load('cs_session')){ $('loginBox').style.display = 'block'; return; }
     $('st').textContent = 'กำลังดึงรายการเช็คที่รอนำฝาก…';
