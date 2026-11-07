@@ -1,0 +1,958 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>สแกนเช็ค</title>
+<!-- ร่างหน้าสแกนเช็ค (ฟอร์ม ① ส่งเช็ค) · อ่านรูปบนมือถือเท่านั้น ไม่ส่งรูปออกไปที่ไหน -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#1d2330;--mute:#667085;--line:#d0d5dd;--acc:#1456f0;--warn:#b54708;--ok:#067647}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Sukhumvit Set","Noto Sans Thai",sans-serif}
+main{max-width:520px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:4px 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:12px}
+.step{font-size:13px;color:var(--mute);margin-bottom:6px}
+.btn{display:block;width:100%;padding:14px;border:0;border-radius:10px;font-size:17px;font-weight:600;background:var(--acc);color:#fff;text-align:center;cursor:pointer}
+.btn.sec{background:#fff;color:var(--acc);border:1px solid var(--acc)}
+.btn:disabled{opacity:.5}
+label{display:block;font-weight:600;margin:12px 0 4px}
+input,select{width:100%;padding:12px;font-size:17px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+.hint{font-size:13px;color:var(--mute)}
+.chk{font-size:13px;color:var(--warn)}
+.okk{font-size:13px;color:var(--ok)}
+img#pv{width:100%;border-radius:8px;margin-top:10px;display:none}
+.bar{height:6px;background:#e4e7ec;border-radius:3px;overflow:hidden;margin-top:10px;display:none}
+.bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .2s}
+#review{display:none}
+.warn{background:#fef0c7;border:1px solid #f79009;border-radius:8px;padding:10px;font-size:15px;color:#7a2e0e;margin-bottom:8px}
+table.cmp{width:100%;border-collapse:collapse;font-size:15px;margin-top:10px}
+table.cmp th,table.cmp td{border-bottom:1px solid var(--line);padding:7px 4px;text-align:left;vertical-align:top}
+table.cmp th{font-size:13px;color:var(--mute);font-weight:600}
+.good{background:#ecfdf3;border:1px solid #6ce9a6;border-radius:8px;padding:10px;font-size:15px;color:#05603a;margin-bottom:8px}
+.r-ok{color:var(--ok);font-weight:600}.r-bad{color:#b42318;font-weight:700}.r-na{color:var(--mute)}
+a.btn{text-decoration:none;margin-top:8px}
+.drow{display:flex;gap:10px;align-items:flex-start;padding:9px 4px;border-bottom:1px solid var(--line);font-size:15px;font-weight:400;margin:0}
+.drow input{width:22px;height:22px;flex:none;margin-top:2px}
+.tag{display:inline-block;font-size:12px;border-radius:6px;padding:1px 6px;margin-top:2px}
+.tag.ok{background:#ecfdf3;color:#05603a}.tag.no{background:#fef0c7;color:#7a2e0e}
+</style>
+</head>
+<body>
+<main>
+<h1 id="h1">📷 สแกนเช็ค → ส่งเช็ค</h1>
+
+<div class="card">
+  <div class="step">ขั้นที่ 1</div>
+  <label for="cam" class="btn">ถ่ายรูป / เลือกรูปเช็ค</label>
+  <input id="cam" type="file" accept="image/*" hidden>
+  <p class="hint" id="camHint">วางเช็คบนโต๊ะ ถ่ายตรง ๆ ให้<b>เช็คเต็มจอ</b> เห็นแถบตัวเลขด้านล่างชัด · ถ่ายเช็คตัวจริง ไม่ถ่ายจากหน้าจอ</p>
+  <img id="pv" alt="รูปเช็ค">
+  <div class="bar" id="bar"><i></i></div>
+  <p class="hint" id="st"></p>
+</div>
+
+<div class="card" id="review">
+  <div class="step">ขั้นที่ 2 · ตรวจกับตัวเช็คทุกช่อง แก้ได้เลย แล้วกดส่ง</div>
+  <div id="warns"></div>
+  <div id="payeeN" hidden></div>
+  <div id="fields">
+  <label for="no">เลขที่เช็ค</label>
+  <input id="no" inputmode="numeric" autocomplete="off">
+  <div id="noN" class="chk"></div>
+
+  <label for="amt">จำนวนเงิน (บาท)</label>
+  <input id="amt" inputmode="decimal" autocomplete="off">
+  <div id="amtN" class="chk"></div>
+
+  <label for="bank">ธนาคาร</label>
+  <select id="bank"></select>
+  <div id="bankN" class="chk"></div>
+  <div id="bankOtherBox" hidden>
+    <label for="bankOther">ระบุชื่อธนาคาร</label>
+    <input id="bankOther" autocomplete="off">
+  </div>
+
+  <label for="dt">วันที่บนเช็ค</label>
+  <input id="dt" type="date">
+  <div id="dtN" class="chk"></div>
+
+  <label for="payer">ผู้สั่งจ่าย</label>
+  <select id="payer"></select>
+  <div id="payerN" class="chk"></div>
+  <div id="otherBox" hidden>
+    <label for="other">ระบุชื่อผู้สั่งจ่าย</label>
+    <input id="other" autocomplete="off" placeholder="พิมพ์ชื่อบริษัท / ผู้สั่งจ่าย">
+  </div>
+  <label for="what">วัตถุประสงค์ <span class="hint">(ไม่บังคับ)</span></label>
+  <input id="what" autocomplete="off" placeholder="เช่น ค่าสินไหมทดแทน · ช่วง UAT ขึ้นต้นด้วย [TEST]">
+  <label for="ref">เลขที่อ้างอิง <span class="hint">(ไม่บังคับ)</span></label>
+  <input id="ref" autocomplete="off" placeholder="เช่น เลขใบแจ้งหนี้ / HN">
+  </div>
+
+  <div style="height:16px"></div>
+  <button class="btn" id="send">ส่งเช็ค</button>
+  <p class="hint" id="who">รูปเช็คและข้อมูลจะเข้าตารางใน Lark ทันที ในชื่อของคุณ · ครั้งแรกระบบจะให้ล็อกอิน Lark 1 ครั้ง</p>
+  <div id="sendN"></div>
+  <button class="btn sec" id="again" style="margin-top:8px">ถ่ายใหม่</button>
+  <p class="hint" style="margin-top:12px">ส่งไม่ได้? <a href="#" id="go">กรอกในฟอร์มส่งเช็คแทน</a> (ต้องแนบรูปเองในฟอร์ม)</p>
+</div>
+
+<div class="card" id="loginBox" style="display:none">
+  <p>เข้าสู่ระบบ Lark ก่อน 1 ครั้ง เพื่อดึงรายการเช็คที่ AR ส่งมา</p>
+  <a class="btn" id="loginBtn">เข้าสู่ระบบ Lark</a>
+</div>
+
+<div class="card" id="rcv" style="display:none">
+  <div class="step">ขั้นที่ 2 · เทียบเช็คตัวจริงกับข้อมูลที่ AR ส่งมา</div>
+  <div id="rBanner"></div>
+  <label for="rPick">เช็คใบนี้คือรายการ</label>
+  <select id="rPick"></select>
+  <div id="rPickN" class="hint"></div>
+  <table class="cmp" id="rTbl"></table>
+  <label id="rOkBox" hidden style="font-weight:400;margin-top:12px"><input type="checkbox" id="rOk" style="width:auto;margin-right:6px">ตรวจกับเช็คตัวจริงแล้ว ข้อมูลที่ AR ส่งถูกต้อง (ระบบอ่านรูปผิด)</label>
+  <button class="btn" id="rSend" style="margin-top:12px">✅ รับเช็คใบนี้</button>
+  <div id="rN"></div>
+  <a class="btn sec" id="rRej" target="_blank" rel="noopener">↩️ ตีกลับให้ AR แก้</a>
+  <button class="btn sec" id="rAgain" style="margin-top:8px">ถ่ายใหม่</button>
+</div>
+
+<div class="card" id="dep" style="display:none">
+  <div class="step">ขั้นที่ 2 · ตรวจรายการนำฝาก แล้วกดส่ง</div>
+  <div id="dBanner"></div>
+  <label>เช็คในใบ Pay-in นี้ <span class="hint" id="dCount"></span></label>
+  <div id="dList"></div>
+  <div id="dSum" style="margin-top:8px"></div>
+  <label for="dAcct">ธนาคารที่นำฝาก (บัญชีรับเงินของโรงพยาบาล)</label>
+  <select id="dAcct"></select><div id="dAcctN" class="chk"></div>
+  <label for="dTotal">ยอดรวมตามใบ Pay-in (บาท)</label>
+  <input id="dTotal" inputmode="decimal" autocomplete="off"><div id="dTotalN" class="chk"></div>
+  <label for="dDate">วันที่นำฝาก</label>
+  <input id="dDate" type="date"><div id="dDateN" class="chk"></div>
+  <button class="btn" id="dSend" style="margin-top:14px">🏦 ส่งนำฝาก</button>
+  <div id="dN"></div>
+  <button class="btn sec" id="dAgain" style="margin-top:8px">ถ่ายใบ Pay-in ใหม่</button>
+</div>
+
+<div class="card" id="done" style="display:none">
+  <div style="font-size:20px;font-weight:700;color:var(--ok)" id="doneH">✅ ส่งเช็คแล้ว</div>
+  <p id="doneT"></p>
+  <p class="hint" id="doneHint">ระบบจะแจ้งในแชท Lark เหมือนส่งจากฟอร์ม · นำเช็คตัวจริงไปให้การเงินภายในวันนี้</p>
+  <button class="btn" id="next">สแกนใบต่อไป</button>
+</div>
+</main>
+
+<script>
+const FORM = "https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpWkaC5DNj54uJTvQwigYrhc";
+// ชื่อคำถามในฟอร์ม (ทดสอบแล้ว: prefill ด้วยชื่อคำถามใช้ได้)
+const Q = {no:"เลขที่เช็ค", amt:"จำนวนเงิน (บาท)", bank:"ธนาคาร", payer:"ผู้สั่งจ่าย", other:"ระบุชื่อผู้สั่งจ่าย"};
+const OTHER = "อื่น ๆ (ระบุ)";
+const DATE_SEP = "/";   // รูปแบบวันที่ที่ฟอร์ม Lark รับ: 2026/11/06
+Q.date = "วันที่บนเช็ค";
+// รหัสธนาคาร 3 หลักในแถบ MICR → ตัวเลือกในฟอร์ม
+const BANKS = {
+ "002":"ธนาคารกรุงเทพ (BBL)","004":"ธนาคารกสิกรไทย (KBank)","006":"ธนาคารกรุงไทย (KTB)",
+ "011":"ธนาคารทหารไทยธนชาต (ttb)","014":"ธนาคารไทยพาณิชย์ (SCB)","017":"ซิตี้แบงก์ (Citibank)",
+ "022":"ธนาคารซีไอเอ็มบี ไทย (CIMB Thai)","024":"ธนาคารยูโอบี (UOB)","025":"ธนาคารกรุงศรีอยุธยา (Krungsri)",
+ "030":"ธนาคารออมสิน (GSB)","031":"ธนาคารเอชเอสบีซี (HSBC)","034":"ธนาคารเพื่อการเกษตรและสหกรณ์การเกษตร (ธ.ก.ส.)",
+ "067":"ธนาคารทิสโก้ (TISCO)","069":"ธนาคารเกียรตินาคินภัทร (KKP)","070":"ธนาคารไอซีบีซี (ไทย) (ICBC)",
+ "073":"ธนาคารแลนด์ แอนด์ เฮ้าส์ (LH Bank)"
+};
+const BANK_OPTS = [...new Set(Object.values(BANKS))].concat("ธนาคารอื่น ๆ (Other)");
+const PAYERS = ["AIA","เมืองไทยประกันชีวิต (Muang Thai Life)","ไทยประกันชีวิต (Thai Life)","FWD ประกันชีวิต",
+ "อลิอันซ์ อยุธยา (Allianz Ayudhya)","กรุงไทย-แอกซ่า (Krungthai-AXA)","ไทยประกันสุขภาพ (Thai Health Insurance)",
+ "กรุงเทพประกันภัย (Bangkok Insurance)","เมืองไทยประกันภัย (Muang Thai Insurance)","ทิพยประกันภัย (Dhipaya)",
+ "วิริยะประกันภัย (Viriyah)","ชับบ์ไลฟ์ (Chubb Life)","เจนเนอราลี่ (Generali)","โตเกียวมารีน (Tokio Marine)",
+ "เอ็ม เอส ไอ จี (MSIG)","อื่น ๆ (ระบุ)"];
+const $ = id => document.getElementById(id);
+// หน้าเดียวกันใช้ 2 แบบ: ส่งเช็ค (แผนก ①) / รับเช็ค (การเงิน ② · receive.html หรือ ?m=receive)
+// ③ นำฝาก: deposit.html หรือ ?m=deposit (ถ่ายใบ Pay-in → ติ๊กเช็คที่อยู่ในใบให้)
+const MODE = (location.pathname.match(/(receive|deposit)/) || [])[1] || new URLSearchParams(location.search).get('m') || 'send';
+const fill = (sel, opts) => { sel.innerHTML = '<option value="">— เลือก —</option>' + opts.map(o=>`<option>${o}</option>`).join(''); };
+fill($('bank'), BANK_OPTS); fill($('payer'), PAYERS);
+
+let wEng, wMicr, wTha;
+const prog = m => { if (m.status === 'recognizing text') $('bar').firstChild.style.width = Math.round(m.progress*100)+'%'; };
+async function workers(){
+  if (!wEng) wEng = await Tesseract.createWorker('eng', 1, {logger: prog});
+  // ไฟล์ฝึกอ่านฟอนต์ MICR (E-13B) วางไว้ข้างหน้าเว็บ · A=⑆ B=⑇ C=⑈ D=⑉
+  if (!wMicr) wMicr = await Tesseract.createWorker('e13b', 1, {logger: prog, langPath: new URL('.', location.href).href, gzip: false});
+  // ภาษาไทย (ฉบับเล็ก 1 MB) สำหรับอ่านชื่อผู้สั่งจ่าย
+  if (!wTha) wTha = await Tesseract.createWorker('tha', 1, {logger: prog, langPath: new URL('.', location.href).href, gzip: false});
+  return [wEng, wMicr, wTha];
+}
+
+// ขาวดำ + ขยายให้กว้างอย่างน้อย 2000px
+function gray(src, sx=0, sy=0, sw=src.naturalWidth||src.width, sh=src.naturalHeight||src.height, minW=2000){
+  const k = Math.max(1, minW/sw), W = Math.min(4000, Math.round(sw*k)), H = Math.round(sh*W/sw);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(src, sx, sy, sw, sh, 0, 0, W, H);
+  const d = g.getImageData(0,0,W,H), p = d.data; let lo = 255, hi = 0;
+  for (let i=0;i<p.length;i+=4){ const y = .299*p[i]+.587*p[i+1]+.114*p[i+2]; p[i]=y; if (y<lo) lo=y; if (y>hi) hi=y; }
+  const r = 255/Math.max(1, hi-lo);
+  for (let i=0;i<p.length;i+=4){ const y = (p[i]-lo)*r; p[i]=p[i+1]=p[i+2]=y; }
+  g.putImageData(d,0,0); return c;
+}
+const crop = (c, b, padY=0.6, padX=0.02) => {
+  const h = b.y1-b.y0, x0 = Math.max(0, b.x0 - c.width*padX), y0 = Math.max(0, b.y0 - h*padY);
+  const x1 = Math.min(c.width, b.x1 + c.width*padX), y1 = Math.min(c.height, b.y1 + h*padY);
+  return gray(c, x0, y0, x1-x0, y1-y0, 2400);
+};
+const digits = s => (s.match(/\d/g)||[]).length;
+
+// ช่องวันที่แบบกล่อง (มุมขวาบน ช่องละ 1 ตัว): ตัดเส้นกรอบ แล้วบีบตัวเลขให้ชิดกันก่อนอ่าน
+// เพราะ OCR อ่านตัวเลขที่ห่างกันมาก ๆ และมีเส้นคั่นผิดบ่อย
+function dateBoxes(c, x0, y0, w, h){
+  const g = gray(c, x0, y0, w, h, 1600), W = g.width, H = g.height;
+  const gx = g.getContext('2d'), d = gx.getImageData(0,0,W,H), p = d.data;
+  // ขาวดำแบบเทียบกับพื้นที่รอบ ๆ (รูปถ่ายมือถือแสงไม่เท่ากัน ตัวเลขจาง ๆ ก็ยังติด)
+  const N = W*H, I = new Float64Array((W+1)*(H+1));
+  for (let y=0;y<H;y++){ let row=0; for (let x=0;x<W;x++){ row += p[(y*W+x)*4]; I[(y+1)*(W+1)+x+1] = I[y*(W+1)+x+1] + row; } }
+  const r = Math.max(12, Math.round(H/5)), ink = new Uint8Array(N);
+  for (let y=0;y<H;y++){ const ya = Math.max(0,y-r), yb = Math.min(H,y+r+1);
+    for (let x=0;x<W;x++){ const xa = Math.max(0,x-r), xb = Math.min(W,x+r+1);
+      const m = (I[yb*(W+1)+xb] - I[ya*(W+1)+xb] - I[yb*(W+1)+xa] + I[ya*(W+1)+xa]) / ((yb-ya)*(xb-xa)), v = p[(y*W+x)*4];
+      ink[y*W+x] = (v < m*0.82 && m - v > 25) ? 1 : 0; } }
+
+  // ลบเส้นตั้ง (ขอบช่อง) และเส้นนอน (ขอบบน/ล่าง)
+  for (let x=0;x<W;x++){ let n=0; for (let y=0;y<H;y++) n+=ink[y*W+x]; if (n > H*0.55) for (let y=0;y<H;y++) ink[y*W+x]=0; }
+  for (let y=0;y<H;y++){ let n=0; for (let x=0;x<W;x++) n+=ink[y*W+x]; if (n > W*0.35) for (let x=0;x<W;x++) ink[y*W+x]=0; }
+  // แบ่งเป็นแถว ๆ แล้วลองทีละแถว (หมึกมากก่อน) เอาแถวแรกที่มีก้อนตัวเลขเรียงกันอย่างน้อย 6 ตัว
+  const rowInk = []; for (let y=0;y<H;y++){ let n=0; for (let x=0;x<W;x++) n+=ink[y*W+x]; rowInk.push(n); }
+  const bands = [];
+  for (let y=0, s=-1, acc=0; y<=H; y++){
+    if (y<H && rowInk[y] > 0){ if (s<0){ s=y; acc=0; } acc += rowInk[y]; }
+    else if (s>=0){ if (y-s > H*0.08 && y-s > 8) bands.push([s, y, acc]); s=-1; }
+  }
+  bands.sort((a,b) => b[2]-a[2]);
+  for (const [bandS, bandE] of bands.slice(0, 4)){
+    const colInk = x => { let n=0; for (let y=bandS;y<bandE;y++) n+=ink[y*W+x]; return n; };
+    const blobs = []; for (let x=0, s=-1; x<=W; x++){ const v = x<W ? colInk(x) : 0; if (v>0 && s<0) s=x; else if (v===0 && s>=0){ blobs.push([s,x]); s=-1; } }
+    const bh = bandE - bandS, keep = blobs.filter(([a,b]) => {
+      if (b-a < bh*0.12 || b-a > bh*1.5) return false;               // เศษเส้นกรอบบาง ๆ / ก้อนใหญ่เกิน
+      let n = 0, top = bandE, bot = bandS;
+      for (let x=a;x<b;x++) for (let y=bandS;y<bandE;y++) if (ink[y*W+x]){ n++; if (y<top) top=y; if (y>bot) bot=y; }
+      return bot-top >= bh*0.6 && n >= (b-a)*bh*0.12;                 // ตัวเลขสูงเกือบเต็มแถว และมีหมึกพอ
+    });
+    if (keep.length < 6 || keep.length > 10) continue;
+    const gap = Math.round(bh*0.35), out = document.createElement('canvas');
+    out.width = keep.reduce((s,[a,b]) => s + b-a + gap, gap); out.height = bh + gap*2;
+    const o = out.getContext('2d'), od = o.createImageData(out.width, out.height);
+    od.data.fill(255);
+    let ox = gap;
+    for (const [a,b] of keep){ for (let x=a;x<b;x++) for (let y=bandS;y<bandE;y++) if (ink[y*W+x]){ const k = ((y-bandS+gap)*out.width + ox + x-a)*4; od.data[k]=od.data[k+1]=od.data[k+2]=0; } ox += b-a+gap; }
+    o.putImageData(od, 0, 0);
+    return out;
+  }
+  return null;
+}
+
+// แถบ MICR เช็คไทย: …[เลขที่เช็ค]⑈ [ธนาคาร 3]⑆[สาขา 4]⑈ [เลขบัญชี]…
+function parseMicr(t){
+  const s = t.replace(/\s+/g,'');
+  let m = s.match(/(\d{7,8})[A-D]+(\d{2,3})[A-D]+(\d{3,4})/);       // เลขเช็ค ⑈ ธนาคาร ⑆ สาขา
+  if (m && BANKS[m[2].padStart(3,'0')]) return {no: m[1], bank: m[2].padStart(3,'0')};
+  m = s.match(/(\d{7,8})\D{0,3}(\d{3})\D{0,3}\d{4}/);
+  if (m && BANKS[m[2]]) return {no: m[1], bank: m[2]};
+  const runs = s.split(/[^0-9]+/).filter(Boolean);
+  let no = null, bank = null;
+  for (let i=0;i<runs.length;i++){
+    const r = runs[i];
+    if (!bank && (r.length===3 || r.length===7) && BANKS[r.slice(0,3)] && i>0) { bank = r.slice(0,3); for (let j=i-1;j>=0;j--) if (runs[j].length===7||runs[j].length===8){ no = runs[j]; break; } break; }
+  }
+  if (!no) no = runs.find(r => r.length===7 || r.length===8) || null;
+  return {no, bank};
+}
+
+// ยอดเงิน: ตัวคั่นสุดท้ายที่ตามด้วยเลข 2 หลักคือทศนิยม (310,826,59 → 310826.59)
+// เก็บผู้สมัครจากทุกรอบที่อ่าน เลือกค่าที่มีทศนิยมและเจอบ่อยที่สุด
+function amountCands(t){
+  t = t.replace(/[Oo]/g,'0').replace(/(\d)\s*([,.])\s*(\d)/g,'$1$2$3');
+  const c = [];
+  for (const m of t.matchAll(/\d[\d,.]*\d/g)){
+    const x = m[0], star = /[*฿B]/.test(t.slice(Math.max(0, m.index-3), m.index)); let v = null, dec = false, mm;
+    if ((mm = x.match(/^(\d{1,3}(?:[.,]?\d{3})*)[.,](\d{2})$/))) { v = parseFloat(mm[1].replace(/[.,]/g,'') + '.' + mm[2]); dec = true; }
+    // ยอดพิมพ์มี *** ล้อม: ดาวท้ายมักถูกอ่านเป็นเลข 1 หลัก (310,826.593 / 310,826,591) → ตัดทิ้ง
+    else if (star && (mm = x.match(/^(\d{1,3}(?:[.,]?\d{3})*)[.,](\d{2})\d$/))) { v = parseFloat(mm[1].replace(/[.,]/g,'') + '.' + mm[2]); dec = true; }
+    else if (/^\d{1,3}(,\d{3})+$/.test(x)) v = parseFloat(x.replace(/,/g,''));
+    // คะแนน: มีทศนิยม +2 · มีลูกน้ำหลักพัน +2 · อยู่หลัง *** หรือ ฿ +3
+    // ดาว *** อ่านเป็นเลข 2 ได้บ่อย: เลขซ้ำติดกันยาว ๆ หน้ายอด = น่าสงสัย
+    const odd = /^(\d)\1{2,}/.test(x.replace(/[,.]/g,'')) || (!/,/.test(x) && Math.floor(v) >= 100000);
+    if (v && v >= 1 && v < 1e9) c.push({v, odd, score: (dec?2:0) + (/,\d{3}/.test(x)?2:0) + (star?3:0) - (odd?3:0)});
+  }
+  return c;
+}
+let amtSure = true;
+function pickAmount(c){
+  amtSure = false;
+  if (!c.length) return null;
+  const n = {}; c.forEach(o => n[o.v] = (n[o.v]||0) + o.score + 1);
+  const k = Object.keys(n).sort((a,b) => n[b]-n[a] || b-a);
+  const top = c.filter(o => o.v == k[0]);
+  // มั่นใจเมื่อค่าอันดับ 1 ไม่น่าสงสัย และคะแนนทิ้งอันดับ 2 อย่างน้อย 2 เท่า
+  amtSure = !top.some(o => o.odd) && (k.length < 2 || n[k[0]] >= 2*n[k[1]]);
+  return +k[0];
+}
+// ผู้สั่งจ่าย: คำที่ใช้จับคู่ (ไทย/อังกฤษ) ตัดช่องว่างก่อนเทียบ เพราะ OCR ไทยมักแยกคำผิด
+const PAYER_KEYS = [
+ ["เมืองไทยประกันชีวิต (Muang Thai Life)", /เมืองไทยประกันชีวิต|MUANGTHAILIFE/i],
+ ["เมืองไทยประกันภัย (Muang Thai Insurance)", /เมืองไทยประกันภัย|MUANGTHAIINSUR/i],
+ ["ไทยประกันสุขภาพ (Thai Health Insurance)", /ไทยประกันสุขภาพ|THAIHEALTHINSUR/i],
+ ["ไทยประกันชีวิต (Thai Life)", /ไทยประกันชีวิต|THAILIFEINSUR/i],
+ ["กรุงไทย-แอกซ่า (Krungthai-AXA)", /แอกซ่า|AXA/i],
+ ["อลิอันซ์ อยุธยา (Allianz Ayudhya)", /อลิอันซ์|ALLIANZ/i],
+ ["กรุงเทพประกันภัย (Bangkok Insurance)", /กรุงเทพประกันภัย|BANGKOKINSUR/i],
+ ["ทิพยประกันภัย (Dhipaya)", /ทิพยประกัน|DHIPAYA/i],
+ ["วิริยะประกันภัย (Viriyah)", /วิริยะ|VIRIYAH/i],
+ ["ชับบ์ไลฟ์ (Chubb Life)", /ชับบ์|CHUBB/i],
+ ["เจนเนอราลี่ (Generali)", /เจนเนอราลี|GENERALI/i],
+ ["โตเกียวมารีน (Tokio Marine)", /โตเกียวมารีน|TOKIOMARINE/i],
+ ["เอ็ม เอส ไอ จี (MSIG)", /เอ็มเอสไอจี|MSIG/i],
+ ["FWD ประกันชีวิต", /FWD/],
+ ["AIA", /เอไอเอ|\bAIA\b|AIACOMPANY/],
+];
+function findPayer(t){
+  const flat = t.replace(/\s+/g,'');
+  for (const [name, re] of PAYER_KEYS) if (re.test(flat) || re.test(t)) return {name};
+  // ไม่ตรงรายชื่อ: ถ้ามีชื่อบริษัท (บริษัท … จำกัด) ที่ไม่ใช่ธนาคาร/โรงพยาบาล ให้เลือก อื่น ๆ แล้วเติมชื่อให้
+  for (const line of t.split('\n')){
+    const m = line.match(/บริษัท.{2,60}?จำกัด(?:\s*\(มหาชน\))?/);
+    if (m && !/ธนาคาร|สมิติเวช/.test(m[0])) return {name: OTHER, other: m[0].replace(/\s+/g,' ').trim()};
+  }
+  for (const line of t.split('\n')){
+    const m = line.match(/[A-Z][A-Za-z&.'\- ]{2,60}?(?:Co\.?,?\s*Ltd\.?|Company\s+Limited|PCL|Public\s+Company)/);
+    if (m && !/Bank|Samitivej/i.test(m[0])) return {name: OTHER, other: m[0].replace(/\s+/g,' ').trim()};
+  }
+  return null;
+}
+// ผู้รับเงิน (บรรทัด จ่าย/Pay) ต้องเป็นสมิติเวช · OCR ไทยมักอ่านเพี้ยน จึงจับแค่บางส่วนของชื่อ
+function payeeOk(t){
+  const flat = t.replace(/\s+/g,'');
+  return /สมิติ|มิติเวช|สม.{0,8}เวช|โรงพยาบาลสม|SAMITI|AMITIVE|MITIVEJ/i.test(flat);
+}
+// วันที่บนเช็ค: ช่องตัวเลข 8 ช่อง (วว ดด ปปปป พ.ศ.) · 06/11/2569 · 20 กันยายน 2547
+const TH_M = ['มกรา','กุมภา','มีนา','เมษา','พฤษภา','มิถุนา','กรกฎา','สิงหา','กันยา','ตุลา','พฤศจิกา','ธันวา'];
+const TH_MS = ['ม.ค','ก.พ','มี.ค','เม.ย','พ.ค','มิ.ย','ก.ค','ส.ค','ก.ย','ต.ค','พ.ย','ธ.ค'];
+function mkDate(d, m, y){
+  d = +d; m = +m; y = +y;
+  if (y < 100) y += (y > 40 ? 2500 : 2000);            // ปี 2 หลัก: 69 → 2569
+  if (y > 2400) y -= 543;                               // พ.ศ. → ค.ศ.
+  if (y < 2000 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const t = new Date(Date.UTC(y, m-1, d));
+  return t.getUTCDate() === d ? t.toISOString().slice(0,10) : null;
+}
+function lev(a, b){
+  const d = Array.from({length: a.length+1}, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1] + (a[i-1]===b[j-1]?0:1));
+  return d[a.length][b.length];
+}
+function monthOf(w){
+  w = (w||'').replace(/[^ก-๙]/g,''); if (w.length < 3) return null;
+  let best = null, bd = 3;
+  TH_M.forEach((k, i) => { const d = lev(w.replace(/(ยน|คม|พันธ์|าคม)$/,'').slice(0, k.length+1), k); if (d < bd) { bd = d; best = i; } });
+  return best;
+}
+let monthGuess = null;
+function parseDate(texts){
+  monthGuess = null;
+  for (const t of texts) for (const w of t.split(/\s+/)) { const m = monthOf(w); if (m != null) { monthGuess = m; break; } }
+  // ตัวเลขจากรอบอ่านอังกฤษก่อน (ไทยมักอ่านปีผิด เช่น 2547 → 2561)
+  texts = [...texts].sort((a, b) => (/[ก-๙]/.test(a) ? 1 : 0) - (/[ก-๙]/.test(b) ? 1 : 0));
+  for (const t of texts){
+    const lines = t.split('\n');
+    // 1) แถวที่มี Date/วันที่ แล้วตามด้วยตัวเลข 8 หลัก (ช่องละตัว อาจมีช่องว่างคั่น)
+    for (const l of lines) if (/date|วันที่|วนท/i.test(l)){
+      const dg = l.replace(/[Oo]/g,'0').replace(/[^0-9]/g,'');
+      for (let i = 0; i + 8 <= dg.length; i++){ const r = mkDate(dg.slice(i,i+2), dg.slice(i+2,i+4), dg.slice(i+4,i+8)); if (r) return r; }
+    }
+    // 2) 06/11/2569 · 6-11-69 · 06.11.2026
+    for (const m of t.matchAll(/(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{4}|\d{2})(?!\d)/g)){ const r = mkDate(m[1], m[2], m[3]); if (r) return r; }
+    // 3) 20 กันยายน 2547: วันกับปีเอาจากรอบอ่านอังกฤษ (ตัวเลขแม่นกว่า) เดือนเอาจากรอบอ่านไทย
+    for (const m of t.matchAll(/(\d{1,2})\s*([^\d\s]{2,12})\s*(25\d\d|20\d\d)(?!\d)/g)){
+      const mo = monthOf(m[2]) ?? monthGuess;
+      if (mo != null){ const r = mkDate(m[1], mo+1, m[3]); if (r) return r; }
+    }
+    const flat = t.replace(/\s+/g,' ');
+    for (let k = 0; k < 12; k++){
+      for (const key of [TH_M[k], TH_MS[k]]){
+        const i = flat.indexOf(key); if (i < 0) continue;
+        const pre = flat.slice(Math.max(0,i-6), i).match(/(\d{1,2})\D*$/), post = flat.slice(i, i+20).match(/(\d{4}|\d{2})/);
+        if (pre && post){ const r = mkDate(pre[1], k+1, post[1]); if (r) return r; }
+      }
+    }
+  }
+  return null;
+}
+const todayISO = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset()*6e4).toISOString().slice(0,10); };
+const parseAmount = t => pickAmount(amountCands(t));
+const fmt = v => v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+let shot = null;
+$('cam').addEventListener('change', e => { const f = e.target.files[0]; if (f){ shot = f; run(URL.createObjectURL(f)); } });
+
+async function run(url){
+  if (MODE === 'deposit') return runPayin(url);
+  const img = $('pv');
+  img.src = url; img.style.display = 'block';
+  await img.decode();
+  $('review').style.display = 'none';
+  $('bar').style.display = 'block'; $('bar').firstChild.style.width = '0';
+  $('st').textContent = 'กำลังอ่านเช็ค… (ครั้งแรกอาจใช้เวลา 10–30 วินาที)';
+  let raw = '';
+  try {
+    const [we, wm, wt] = await workers(), full = gray(img);
+    // 1) อ่านทั้งรูป หาแถวแถบ MICR (แถวที่มีตัวเลขมากที่สุด) และแถวยอดเงิน
+    const r1 = (await we.recognize(full, {}, {blocks: true})).data;
+    const lines = (r1.blocks||[]).flatMap(b => b.paragraphs.flatMap(p => p.lines));
+    const micrLine = lines.filter(l => digits(l.text) >= 12).sort((a,b) => digits(b.text)-digits(a.text))[0];
+    let micr = '';
+    if (micrLine){ micr = (await wm.recognize(crop(full, micrLine.bbox))).data.text; }
+    else { micr = (await wm.recognize(gray(img, 0, img.naturalHeight*0.75, img.naturalWidth, img.naturalHeight*0.25))).data.text; }
+    let {no, bank} = parseMicr(micr);
+    if (!no || !bank){ const p2 = parseMicr(r1.text); no = no || p2.no; bank = bank || p2.bank; }
+    if (!bank){ // รหัสธนาคาร 3 หลักตามด้วยสาขา 4 หลัก เช่น 004:1234
+      for (const m of r1.text.matchAll(/(?<!\d)(\d{3})\s*[:;|\-]\s*\d{4}\b/g)) if (BANKS[m[1]]) { bank = m[1]; break; } }
+    // 1b) ถ้าเช็คเล็กในรูป (ถ่ายไกล/มีของอื่นติดมา) ตัดเฉพาะตัวเช็คจากตำแหน่งแถบ MICR แล้วอ่านใหม่
+    let src = full, rr = r1, ls = lines;
+    if (micrLine){
+      const b = micrLine.bbox, mw = b.x1 - b.x0;
+      if (mw < full.width*0.7){
+        // เผื่อขอบกว้าง: แถบ MICR ยาวประมาณ 60–85% ของความกว้างเช็ค
+        const cw = mw/0.6, x0 = Math.max(0, b.x0 - cw*0.15), y1 = Math.min(full.height, b.y1 + cw*0.05), y0 = Math.max(0, y1 - cw*0.6);
+        src = gray(full, x0, y0, Math.min(full.width - x0, cw*1.15), y1 - y0, 2400);
+        rr = (await we.recognize(src, {}, {blocks: true})).data;
+        ls = (rr.blocks||[]).flatMap(b => b.paragraphs.flatMap(p => p.lines));
+        raw += 'CROP>> ' + rr.text + '\n';
+      }
+    }
+    // 2) ยอดเงิน: อ่านซ้ำเฉพาะแถวที่น่าจะเป็นยอดเงิน (มี *** / ฿ / ตัวเลขมีจุดทศนิยม) แบบขยายใหญ่
+    const micrInSrc = ls.filter(l => digits(l.text) >= 12).sort((a,b) => digits(b.text)-digits(a.text))[0];
+    const cands = amountCands(ls.filter(l => l !== micrInSrc).map(l => l.text).join('\n'));
+    const amtLines = ls.filter(l => l !== micrInSrc && /\*{2,}|฿|\d[.,]\d{2}\b/.test(l.text));
+    await we.setParameters({tessedit_char_whitelist: '0123456789,.*'});
+    for (const l of amtLines){ const t = (await we.recognize(crop(src, l.bbox, 0.4, 0))).data.text; raw += 'AMT>> '+t+'\n'; cands.push(...amountCands(t)); }
+    { const t = (await we.recognize(src)).data.text; raw += 'AMTALL>> '+t+'\n'; cands.push(...amountCands(t)); }
+    await we.setParameters({tessedit_char_whitelist: ''});
+    let amt = pickAmount(cands);
+    // 3) ผู้สั่งจ่าย: อ่านภาษาไทยบนตัวเช็ค แล้วจับคู่กับรายชื่อบริษัทประกัน
+    const tt = (await wt.recognize(full)).data.text; raw += 'THA>> ' + tt + '\n';
+    const payer = findPayer(tt + '\n' + rr.text + '\n' + r1.text);
+    // 4) วันที่: อ่านซ้ำเฉพาะแถววันที่ แบบตัวเลขล้วน และแบบภาษาไทย (ชื่อเดือน)
+    const dl = ls.find(l => /date|วันที่/i.test(l.text) && /\d/.test(l.text)) || ls.find(l => /(25|20)\d\d\b/.test(l.text) && !/\*\*/.test(l.text));
+    const extra = [];
+    // 4a) ช่องวันที่แบบกล่องด้านขวาของคำว่า Date
+    const dw = ls.flatMap(l => l.words||[]).find(w => /^date/i.test(w.text.trim()));
+    const boxes = [];
+    // ขอบขวาของช่องวันที่ ≈ ขอบขวาของข้อความบนเช็ค (เช่น "Or Order") ไม่เลยไปถึงพื้นโต๊ะ
+    const textRight = Math.max(...ls.filter(l => /[A-Za-zก-๙]{3}/.test(l.text) && digits(l.text) < 12).map(l => l.bbox.x1), 0);
+    if (dw){ const b = dw.bbox, h = b.y1-b.y0, x0 = Math.min(b.x1, b.x0 + h*2.9), xr = textRight > x0 + h*10 ? textRight + src.width*0.015 : x0 + h*30;
+      boxes.push([x0, Math.max(0, b.y0-h*1.6), Math.min(src.width, xr) - x0, h*3.2]); }
+    boxes.push([src.width*0.6, 0, src.width*0.4, src.height*0.25]);   // สำรอง: มุมขวาบนของเช็ค
+    await we.setParameters({tessedit_char_whitelist: '0123456789', tessedit_pageseg_mode: '7'});
+    try {
+      for (const [x, y, w, h] of boxes){
+        const c = dateBoxes(src, x, y, Math.max(10, w), Math.min(h, src.height - y)); if (!c) continue;
+        const t = (await we.recognize(c)).data.text.replace(/\D/g,''); raw += 'DBOX>> ' + t + '\n';
+        // รับเฉพาะ 8 หลักที่เป็นวันที่จริง (ววดดปปปป) กันอ่านมั่ว
+        if (t.length === 8 && mkDate(t.slice(0,2), t.slice(2,4), t.slice(4))){ extra.push('Date ' + t); break; }
+      }
+    } finally { await we.setParameters({tessedit_char_whitelist: '', tessedit_pageseg_mode: '6'}); }
+    if (dl){
+      const c = crop(src, dl.bbox, 0.5, 0.02);
+      extra.push((await wt.recognize(c)).data.text);
+      await we.setParameters({tessedit_char_whitelist: '0123456789/.- '});
+      extra.push('Date ' + (await we.recognize(c)).data.text);
+      await we.setParameters({tessedit_char_whitelist: ''});
+      raw += 'DATE>> ' + extra.join(' | ') + '\n';
+    }
+    const date = parseDate([...extra, rr.text, r1.text, tt]);
+    const toUs = payeeOk(tt + '\n' + rr.text + '\n' + r1.text);
+    if (!amt && src !== full) amt = parseAmount(lines.filter(l => l !== micrLine).map(l => l.text).join('\n'));
+    raw += 'MICR>> ' + micr + '\nALL>> ' + r1.text;
+    if (MODE === 'receive') { await listReady; showReceive(no, amt, bank, date, toUs); } else
+    show(no, amt, bank, payer, toUs, date);
+  } catch(err){
+    raw += 'ERR ' + err;
+    $('st').textContent = 'อ่านไม่สำเร็จ'; if (MODE === 'receive') showReceive(null, null, null, null, true); else show(null,null,null,null,true,null);
+  }
+  $('bar').style.display = 'none';
+}
+
+function note(id, ok, okText, noText){ const n=$(id); n.className = ok?'okk':'chk'; n.textContent = ok?okText:noText; }
+function show(no, amt, bank, payer, toUs, date){
+  $('dt').value = date || todayISO();
+  if (!date) note('dtN', false, '', 'อ่านวันที่ไม่ได้ · ใส่วันนี้ไว้ให้ ตรวจกับเช็คแล้วแก้');
+  else {
+    // เช็คใช้ได้ 6 เดือนนับจากวันที่บนเช็ค · ลงวันที่ล่วงหน้าฝากก่อนวันนั้นไม่ได้
+    const days = (new Date(todayISO()) - new Date(date)) / 864e5;
+    if (days > 183) note('dtN', false, '', '⚠️ อ่านได้ · เช็คลงวันที่เกิน 6 เดือน อาจหมดอายุ ตรวจกับเช็ค');
+    else if (days < 0) note('dtN', false, '', '⚠️ อ่านได้ · เช็คลงวันที่ล่วงหน้า ยังนำฝากไม่ได้จนถึงวันนั้น');
+    else note('dtN', true, 'อ่านได้ · ปี พ.ศ. แปลงให้แล้ว ตรวจกับเช็คอีกครั้ง', '');
+  }
+  $('payeeN').hidden = toUs;
+    $('no').value = no || ''; $('amt').value = amt!=null ? fmt(amt) : '';
+  $('bank').value = bank ? BANKS[bank] : ''; $('bankOtherBox').hidden = true; $('bankOther').value = '';
+  note('noN', no, 'อ่านได้ · เทียบกับตัวเลขบนเช็คอีกครั้ง', 'อ่านไม่ได้ · พิมพ์เอง');
+  note('amtN', amt!=null && amtSure, 'อ่านได้ · เทียบกับยอดบนเช็คทีละหลัก รวมจุดทศนิยม',
+       amt!=null ? '⚠️ ไม่แน่ใจ (ดาว *** อาจถูกอ่านเป็นตัวเลข) · ตรวจและแก้ให้ตรงกับเช็ค' : 'อ่านไม่ได้ · พิมพ์เอง');
+  note('bankN', bank, 'เลือกให้จากรหัสธนาคารในแถบตัวเลขล่าง', 'อ่านไม่ได้ · เลือกเอง');
+  $('payer').value = payer ? payer.name : '';
+  $('other').value = payer && payer.other ? payer.other : '';
+  $('otherBox').hidden = $('payer').value !== OTHER;
+  note('payerN', payer, payer && payer.other ? 'อ่านชื่อบริษัทจากเช็ค · ตรวจตัวสะกดอีกครั้ง' : 'อ่านจากชื่อบนเช็ค · ตรวจอีกครั้ง',
+       'ไม่พบชื่อบริษัทประกันบนเช็ค (เช่น เช็คธนาคาร / แคชเชียร์เช็ค) · เลือกเอง');
+  // คำเตือนสีส้มด้านบน (ช่องต่าง ๆ แก้ได้ในหน้านี้)
+  const W = [];
+  if (!toUs) W.push('⚠️ <b>ไม่พบชื่อ "สมิติเวช" ในบรรทัด จ่าย/Pay</b><br>เช็คนี้อาจไม่ได้สั่งจ่ายโรงพยาบาล ตรวจชื่อผู้รับเงินบนเช็ค ถ้าไม่ใช่สมิติเวช อย่ารับเช็ค');
+  if (amt!=null && !amtSure) W.push('⚠️ <b>ยอดเงินไม่แน่ใจ</b> (ดาว *** อาจถูกอ่านเป็นตัวเลข) ตรวจยอดในฟอร์มทีละหลัก');
+  if ($('dtN').textContent.startsWith('⚠️')) W.push('⚠️ <b>' + $('dtN').textContent.replace(/^⚠️ อ่านได้ · /,'') + '</b>');
+  $('warns').innerHTML = W.map(w => '<div class="warn">'+w+'</div>').join('');
+
+  $('st').textContent = 'อ่านเสร็จ';
+  $('review').style.display = 'block'; $('review').scrollIntoView({behavior:'smooth'});
+}
+
+$('go').addEventListener('click', () => {
+  const no = $('no').value.replace(/\D/g,''), amt = $('amt').value.replace(/[^\d.]/g,'');
+  const q = new URLSearchParams();
+  if (no) q.set('prefill_'+Q.no, no);
+  if (amt) q.set('prefill_'+Q.amt, amt);
+  if ($('bank').value) q.set('prefill_'+Q.bank, $('bank').value);
+  if ($('payer').value) q.set('prefill_'+Q.payer, $('payer').value);
+  if ($('dt').value) q.set('prefill_'+Q.date, $('dt').value.replace(/-/g, DATE_SEP));
+  if ($('payer').value === OTHER && $('other').value.trim()) q.set('prefill_'+Q.other, $('other').value.trim());
+  location.href = FORM + '?' + q.toString().replace(/\+/g,'%20');
+});
+$('payer').addEventListener('change', () => { const on = $('payer').value === OTHER; $('otherBox').hidden = !on; if (on) $('other').focus(); });
+$('again').addEventListener('click', () => { $('cam').value=''; $('cam').click(); });
+$('bank').addEventListener('change', () => { const on = $('bank').value === BANK_OTHER; $('bankOtherBox').hidden = !on; if (on) $('bankOther').focus(); });
+
+// ── ส่งตรงเข้า Lark ผ่านตัวกลาง (Cloudflare Worker) ─────────────────────
+// รูปส่งไปที่ Lark เท่านั้น (Worker ไม่เก็บรูป) · ล็อกอิน Lark ครั้งแรกครั้งเดียว
+let WORKER = "https://cheque-scan.ar-cheque.workers.dev";   // ใส่ URL ของ Worker เมื่อพร้อม · ว่าง = ใช้แบบเปิดฟอร์มเหมือนเดิม
+const BANK_OTHER = "ธนาคารอื่น ๆ (Other)";
+const store = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch(e){} };
+const load = k => { try { return localStorage.getItem(k); } catch(e){ return null; } };
+function collect(){
+  const f = {no: $('no').value.replace(/\D/g,''), amt: +$('amt').value.replace(/[^\d.]/g,''), bank: $('bank').value,
+    bankOther: $('bankOther').value.trim(), payer: $('payer').value, payerOther: $('other').value.trim(),
+    date: $('dt').value, what: $('what').value.trim(), ref: $('ref').value.trim()};
+  const miss = [];
+  if (f.no.length < 6 || f.no.length > 10) miss.push(['no','เลขที่เช็ค (6–10 หลัก)']);
+  if (!(f.amt > 0)) miss.push(['amt','จำนวนเงิน']);
+  if (!f.bank) miss.push(['bank','ธนาคาร']); else if (f.bank === BANK_OTHER && !f.bankOther) miss.push(['bankOther','ระบุชื่อธนาคาร']);
+  if (!f.date) miss.push(['dt','วันที่บนเช็ค']);
+  if (!f.payer) miss.push(['payer','ผู้สั่งจ่าย']); else if (f.payer === OTHER && !f.payerOther) miss.push(['other','ระบุชื่อผู้สั่งจ่าย']);
+  return {f, miss};
+}
+// ย่อรูปให้ไม่เกิน 2000px (ยังอ่านตัวเลขบนเช็คชัด) ส่งเร็วขึ้นบนเน็ตมือถือ
+async function photoBlob(){
+  const img = $('pv'), k = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth*k); c.height = Math.round(img.naturalHeight*k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return new Promise(r => c.toBlob(r, 'image/jpeg', 0.88));
+}
+const sendNote = (t, bad) => { $('sendN').innerHTML = t ? '<div class="'+(bad?'warn':'hint')+'" style="margin-top:8px">'+t+'</div>' : ''; };
+async function send(){
+  const {f, miss} = collect();
+  if (miss.length){ sendNote('กรอกให้ครบก่อนส่ง: ' + miss.map(m => m[1]).join(', '), true); $(miss[0][0]).focus(); return; }
+  const sess = load('cs_session'), blob = await photoBlob();
+  if (!sess) return toLogin(f, blob);
+  $('send').disabled = true; $('send').textContent = 'กำลังส่ง…'; sendNote('');
+  try {
+    const r = await fetch(WORKER + '/submit', {method: 'POST', body: blob,
+      headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Fields': encodeURIComponent(JSON.stringify(f))}});
+    const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+    const d = await r.json().catch(() => ({}));
+    if (d.login){ store('cs_session', null); return toLogin(f, blob); }
+    if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    if (d.name) store('cs_name', d.name);
+    $('review').style.display = 'none'; $('done').style.display = 'block';
+    $('doneT').textContent = 'เลขที่เช็ค ' + f.no + ' · ' + fmt(f.amt) + ' บาท' + (d.name ? ' · ส่งในชื่อ ' + d.name : '');
+    if (d.mode === 'no-photo') $('doneT').textContent += ' · ⚠️ ส่งข้อมูลแล้ว แต่แนบรูปไม่สำเร็จ แจ้งแพต';
+    $('done').scrollIntoView({behavior:'smooth'});
+  } catch(e){
+    sendNote('❌ ส่งไม่สำเร็จ: ' + e.message + '<br>ลองกดส่งอีกครั้ง หรือกด "กรอกในฟอร์มส่งเช็คแทน" ด้านล่าง', true);
+  } finally { $('send').disabled = false; $('send').textContent = 'ส่งเช็ค';
+  }
+}
+// ยังไม่ได้ล็อกอิน: เก็บข้อมูลกับรูปไว้ในแท็บนี้ชั่วคราว → ล็อกอิน Lark → กลับมาส่งให้อัตโนมัติ
+async function toLogin(f, blob){
+  const url = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
+  try { sessionStorage.setItem('cs_pending', JSON.stringify({f, url})); } catch(e){}
+  location.href = WORKER + '/login';
+}
+async function resume(){
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (!h.has('session') && !h.has('error')) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  if (h.get('session')) store('cs_session', h.get('session'));
+  let p = null; try { p = JSON.parse(sessionStorage.getItem('cs_pending')); sessionStorage.removeItem('cs_pending'); } catch(e){}
+  if (!p) return;
+  const img = $('pv'); img.src = p.url; img.style.display = 'block'; await img.decode();
+  $('no').value = p.f.no; $('amt').value = fmt(p.f.amt); $('bank').value = p.f.bank; $('bankOther').value = p.f.bankOther;
+  $('bankOtherBox').hidden = p.f.bank !== BANK_OTHER; $('payer').value = p.f.payer; $('other').value = p.f.payerOther;
+  $('otherBox').hidden = p.f.payer !== OTHER; $('dt').value = p.f.date; $('what').value = p.f.what; $('ref').value = p.f.ref;
+  $('review').style.display = 'block';
+  if (h.get('error')) { sendNote('❌ ล็อกอิน Lark ไม่สำเร็จ ลองกดส่งอีกครั้ง', true); return; }
+  send();
+}
+if (WORKER){
+  $('send').addEventListener('click', send);
+  const n = load('cs_name'); if (n && load('cs_session')) $('who').textContent = 'ส่งในชื่อ ' + n + ' · รูปเช็คและข้อมูลจะเข้าตารางใน Lark ทันที';
+  resume();
+} else {
+  // ยังไม่มีตัวกลาง: ใช้แบบเปิดฟอร์มเหมือนเดิม
+  $('send').textContent = 'ไปตรวจและส่งในฟอร์ม →'; $('send').addEventListener('click', () => $('go').click());
+  $('who').innerHTML = 'เปิดฟอร์ม <b>ส่งเช็ค</b> ที่กรอกไว้ให้ · แนบรูปเช็คในฟอร์ม แล้วกดส่ง';
+}
+// ── ② รับเช็ค: เทียบรูปเช็คที่การเงินถ่ายกับข้อมูลที่ AR ส่งมา ─────────────────────
+const REJECT_FORM = "https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpVsQ0nejnDqDpsS6hWFhGYe";
+let LIST = null, READ = null, listReady = Promise.resolve();
+const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const bkkDate = ms => ms ? new Date(+ms + 7*3600e3).toISOString().slice(0,10) : '';
+const thDate = iso => iso ? iso.slice(8,10) + '/' + iso.slice(5,7) + '/' + (+iso.slice(0,4) + 543) : '';
+const shortBank = b => (String(b).match(/\(([^)]+)\)\s*$/) || [,''])[1] || b;
+async function loadList(stage){
+  const sess = load('cs_session');
+  if (!sess){ LIST = null; return null; }
+  const r = await fetch(WORKER + '/list', {method: 'POST', headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'application/json'}, body: JSON.stringify({stage})});
+  const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+  const d = await r.json().catch(() => ({}));
+  if (d.login){ store('cs_session', null); LIST = null; return null; }
+  if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+  if (d.name) store('cs_name', d.name);
+  // เก่าสุดก่อน (ส่งมาก่อน รับก่อน)
+  LIST = d.items.sort((a, b) => (a.at||0) - (b.at||0)); return LIST;
+}
+// หาเช็คในรายการที่ตรงกับที่อ่านได้: เลขที่ตรง → เลขต่าง 1 หลัก → ยอดเงินตรงใบเดียว
+function matchCheque(no, amt){
+  const L = LIST || [], amtEq = x => amt != null && Math.abs(x.amt - amt) < 0.005;
+  if (no){
+    let c = L.filter(x => x.no === no);
+    if (c.length) return {item: c.find(amtEq) || c[0], how: 'no', dup: c.length};
+    c = L.filter(x => x.no.length === no.length && lev(x.no, no) <= 1);
+    if (c.length === 1) return {item: c[0], how: 'near', dup: 1};
+  }
+  const c = L.filter(amtEq);
+  if (c.length === 1) return {item: c[0], how: 'amt', dup: 1};
+  return {item: null, how: null, dup: 0};
+}
+function showReceive(no, amt, bank, date, toUs){
+  READ = {no, amt: amt, bank: bank ? BANKS[bank] : null, date, toUs, sure: amtSure};
+  $('review').style.display = 'none'; $('rcv').style.display = 'block'; $('rN').innerHTML = '';
+  const m = matchCheque(no, amt);
+  const L = LIST || [];
+  $('rPick').innerHTML = '<option value="">— เลือกเช็คที่ AR ส่งมา (' + L.length + ' ใบรอรับ) —</option>' +
+    L.map(x => `<option value="${esc(x.id)}">${esc(x.no)} · ${fmt(x.amt)} บาท · ${esc(shortBank(x.bank))}${x.dept ? ' · ' + esc(x.dept) : ''}</option>`).join('');
+  $('rPick').value = m.item ? m.item.id : '';
+  $('rPickN').textContent = m.how === 'no' ? (m.dup > 1 ? `⚠️ มีเช็คเลขนี้รอรับ ${m.dup} รายการ (ส่งซ้ำ?) เลือกให้ใบที่ยอดตรง` : 'จับคู่จากเลขที่เช็คในรูปให้แล้ว')
+    : m.how === 'near' ? 'เลขที่เช็คที่อ่านได้ต่างไป 1 หลัก จับคู่ให้ใบที่ใกล้ที่สุด · ดูตารางด้านล่าง'
+    : m.how === 'amt' ? 'อ่านเลขที่เช็คไม่ได้ จับคู่จากยอดเงินให้ · ดูตารางด้านล่าง'
+    : L.length ? 'ไม่พบเช็คใบนี้ในรายการที่รอรับ · ถ้าเป็นใบในรายการ เลือกเองด้านบน' : 'ตอนนี้ไม่มีเช็คที่รอรับ';
+  renderCmp();
+  $('st').textContent = 'อ่านเสร็จ';
+  $('rcv').scrollIntoView({behavior: 'smooth'});
+}
+function renderCmp(){
+  const it = (LIST || []).find(x => x.id === $('rPick').value), R = READ || {};
+  $('rOk').checked = false;
+  if (!it){
+    $('rTbl').innerHTML = ''; $('rOkBox').hidden = true; $('rSend').disabled = true; $('rRej').style.display = 'none';
+    $('rBanner').innerHTML = '<div class="warn">⚠️ <b>ยังไม่ได้จับคู่กับเช็คที่ AR ส่งมา</b><br>' +
+      (R.no ? 'เลขที่เช็คที่อ่านได้: ' + esc(R.no) + ' · ' : '') + 'ถ้าไม่มีในรายการ อย่ารับเช็ค แจ้ง AR ให้ส่งเข้าระบบก่อน</div>';
+    return;
+  }
+  // ช่อง · AR ส่งมา · อ่านจากรูป · ผล (อ่านไม่ได้ = ไม่นับว่าผิด แต่ต้องตรวจด้วยตา)
+  const rows = [
+    ['เลขที่เช็ค', it.no, R.no, R.no == null ? null : R.no === it.no],
+    ['จำนวนเงิน', fmt(it.amt), R.amt != null ? fmt(R.amt) : null, R.amt == null ? null : Math.abs(R.amt - it.amt) < 0.005],
+    ['ธนาคาร', shortBank(it.bank), R.bank ? shortBank(R.bank) : null, R.bank == null ? null : R.bank === it.bank],
+    ['วันที่บนเช็ค', thDate(bkkDate(it.date)), R.date ? thDate(R.date) : null, R.date == null ? null : R.date === bkkDate(it.date)],
+  ];
+  const bad = rows.filter(r => r[3] === false), na = rows.filter(r => r[3] == null);
+  $('rTbl').innerHTML = '<tr><th></th><th>AR ส่งมา</th><th>อ่านจากรูป</th><th></th></tr>' + rows.map(r =>
+    `<tr><td>${r[0]}</td><td>${esc(r[1])}</td><td>${r[2] == null ? '<span class="r-na">อ่านไม่ได้</span>' : esc(r[2])}</td>` +
+    `<td>${r[3] == null ? '<span class="r-na">ดูด้วยตา</span>' : r[3] ? '<span class="r-ok">✅</span>' : '<span class="r-bad">❌ ไม่ตรง</span>'}</td></tr>`).join('') +
+    `<tr><td>ผู้สั่งจ่าย</td><td colspan="3">${esc(it.payer || '—')}</td></tr>` +
+    `<tr><td>ส่งโดย</td><td colspan="3">${esc(it.by || '—')}${it.dept ? ' · ' + esc(it.dept) : ''}${it.ref ? '<br><span class="hint">' + esc(it.ref) + '</span>' : ''}</td></tr>`;
+  const W = [];
+  if (bad.length) W.push('<div class="warn">❌ <b>ไม่ตรงกับที่ AR ส่งมา: ' + bad.map(r => r[0]).join(', ') + '</b><br>ตรวจเช็คตัวจริง ถ้าข้อมูล AR ผิด กด "ตีกลับให้ AR แก้" · ถ้าระบบอ่านรูปผิด ติ๊กยืนยันแล้วรับได้</div>');
+  else if (na.length === rows.length) W.push('<div class="warn">⚠️ <b>อ่านรูปไม่ได้เลย</b> ถ่ายใหม่ให้เห็นแถบตัวเลขด้านล่างชัด หรือเทียบด้วยตาทุกช่อง</div>');
+  else W.push('<div class="good">✅ <b>ตรงกับที่ AR ส่งมา</b>' + (na.length ? ' · ช่องที่อ่านไม่ได้ (' + na.map(r => r[0]).join(', ') + ') ดูด้วยตาอีกครั้ง' : '') + '</div>');
+  if (R.toUs === false) W.push('<div class="warn">⚠️ ไม่พบชื่อ "สมิติเวช" ในบรรทัดจ่าย ตรวจชื่อผู้รับเงินบนเช็ค</div>');
+  $('rBanner').innerHTML = W.join('');
+  const needOk = bad.length > 0 || na.length === rows.length;
+  $('rOkBox').hidden = !needOk; $('rSend').disabled = needOk;
+  const q = new URLSearchParams({'prefill_เลขที่เช็คที่จะตีกลับ': it.no, 'prefill_เหตุผล': 'ข้อมูลไม่ตรงกับเช็คจริง'});
+  $('rRej').href = REJECT_FORM + '?' + q.toString().replace(/\+/g, '%20'); $('rRej').style.display = 'block';
+  $('rRej').className = bad.length ? 'btn' : 'btn sec';
+}
+async function receiveSend(){
+  const it = (LIST || []).find(x => x.id === $('rPick').value); if (!it) return;
+  const sess = load('cs_session'); if (!sess) return toLoginPage();
+  $('rSend').disabled = true; $('rSend').textContent = 'กำลังส่ง…'; $('rN').innerHTML = '';
+  try {
+    const r = await fetch(WORKER + '/receive', {method: 'POST', body: await photoBlob(),
+      headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Fields': encodeURIComponent(JSON.stringify({no: it.no}))}});
+    const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+    const d = await r.json().catch(() => ({}));
+    if (d.login){ store('cs_session', null); return toLoginPage(); }
+    if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    LIST = LIST.filter(x => x !== it);
+    $('rcv').style.display = 'none'; $('done').style.display = 'block';
+    $('doneT').textContent = 'เลขที่เช็ค ' + it.no + ' · ' + fmt(it.amt) + ' บาท · สถานะเปลี่ยนเป็น "รอนำฝาก" · เหลือรอรับ ' + LIST.length + ' ใบ';
+    $('done').scrollIntoView({behavior: 'smooth'});
+  } catch(e){
+    $('rN').innerHTML = '<div class="warn" style="margin-top:8px">❌ ส่งไม่สำเร็จ: ' + esc(e.message) + '<br>ลองกดอีกครั้ง</div>';
+  } finally { $('rSend').textContent = '✅ รับเช็คใบนี้'; if ($('rcv').style.display !== 'none') $('rSend').disabled = !$('rOkBox').hidden && !$('rOk').checked;
+  }
+}
+const toLoginPage = () => { location.href = WORKER + '/login?p=' + encodeURIComponent(location.pathname.split('/').pop() || 'index.html'); };
+async function initReceive(){
+  document.title = 'รับเช็ค'; $('h1').textContent = '📷 รับเช็คจาก AR → เทียบ → รับ';
+  $('camHint').innerHTML = 'ถ่ายเช็คตัวจริงที่ได้รับ ให้<b>เช็คเต็มจอ</b> เห็นแถบตัวเลขด้านล่างชัด · ระบบจะเทียบกับข้อมูลที่ AR ส่งมาให้';
+  $('loginBtn').onclick = toLoginPage;
+  $('doneH').textContent = '✅ รับเช็คแล้ว'; $('next').textContent = 'รับใบต่อไป';
+  $('doneHint').textContent = 'ระบบแจ้งกลุ่ม ③ นำฝากให้แล้ว · เก็บเช็คตัวจริงไว้รอนำฝาก';
+  try {
+    if (!load('cs_session')){ $('loginBox').style.display = 'block'; return; }
+    $('st').textContent = 'กำลังดึงรายการเช็คที่รอรับ…';
+    await (listReady = loadList('receive'));
+    if (!LIST){ $('loginBox').style.display = 'block'; $('st').textContent = ''; return; }
+    $('loginBox').style.display = 'none';
+    $('st').textContent = 'รอรับ ' + LIST.length + ' ใบ' + (load('cs_name') ? ' · ' + load('cs_name') : '');
+  } catch(e){ $('st').textContent = '❌ ดึงรายการไม่สำเร็จ: ' + e.message + ' · รีเฟรชหน้า'; }
+}
+$('rPick').addEventListener('change', renderCmp);
+$('rOk').addEventListener('change', () => { $('rSend').disabled = !$('rOk').checked; });
+$('rSend').addEventListener('click', receiveSend);
+$('rAgain').addEventListener('click', () => { $('cam').value=''; $('cam').click(); });
+if (MODE === 'receive') initReceive();
+
+// ── ③ นำฝาก: อ่านใบ Pay-in แล้วจับคู่กับเช็คที่รอนำฝาก (เทียบกับรายการ ไม่เดาเลขเอง) ──────────
+const ACCOUNTS = [
+ ['TTB · ธนาคารทหารไทยธนชาต', /\bTTB\b|ทหารไทย|ธนชาต|THANACHART|\bTMB\b/i],
+ ['KBANK · ธนาคารกสิกรไทย', /KBANK|KASIKORN|กสิกร/i],
+ ['SCB · ธนาคารไทยพาณิชย์', /\bSCB\b|SIAM\s*COMMERCIAL|ไทยพาณิชย์/i],
+ ['BBL · ธนาคารกรุงเทพ', /BANGKOK\s*BANK|\bBBL\b|ธนาคารกรุงเทพ/i],
+ ['BAY · ธนาคารกรุงศรีอยุธยา (Krungsri)', /KRUNGSRI|AYUDHYA|กรุงศรี/i],
+ ['KTB · ธนาคารกรุงไทย', /KRUNG\s*THAI\s*BANK|\bKTB\b|ธนาคารกรุงไทย/i],
+];
+let FOUND = {};   // id → true (พบเลขนี้ในใบ Pay-in)
+let PAYIN = null; // ค่าที่อ่านจากใบ: total, sure
+let PAYIN_TOT = [];  // ยอดที่อ่านจากแถว รวม/TOTAL
+function bankOfSlip(head, all){
+  // หัวใบ (ส่วนบน) ก่อน · ทั้งใบมีชื่อธนาคารของเช็คแต่ละใบปนอยู่ จึงใช้เมื่อหัวใบอ่านไม่ได้
+  for (const t of [head, all]){
+    const hit = ACCOUNTS.filter(([, re]) => re.test(t) || re.test(t.replace(/\s+/g,'')));
+    if (hit.length === 1) return hit[0][0];
+  }
+  return null;
+}
+// ใบ Pay-in เป็นตาราง: ขาวดำแบบเทียบพื้นที่รอบ ๆ แล้วลบเส้นตาราง (เส้นยาวแนวนอน/ตั้ง) ให้เหลือแต่ตัวหนังสือ
+function unlined(src){
+  const g = gray(src, 0, 0, src.naturalWidth || src.width, src.naturalHeight || src.height, 2400), W = g.width, H = g.height;
+  const gx = g.getContext('2d'), d = gx.getImageData(0, 0, W, H), p = d.data, N = W*H;
+  const I = new Float64Array((W+1)*(H+1));
+  for (let y=0;y<H;y++){ let row=0; for (let x=0;x<W;x++){ row += p[(y*W+x)*4]; I[(y+1)*(W+1)+x+1] = I[y*(W+1)+x+1] + row; } }
+  const r = Math.max(15, Math.round(W/80)), ink = new Uint8Array(N);
+  for (let y=0;y<H;y++){ const ya = Math.max(0,y-r), yb = Math.min(H,y+r+1);
+    for (let x=0;x<W;x++){ const xa = Math.max(0,x-r), xb = Math.min(W,x+r+1);
+      const m = (I[yb*(W+1)+xb] - I[ya*(W+1)+xb] - I[yb*(W+1)+xa] + I[ya*(W+1)+xa]) / ((yb-ya)*(xb-xa)), v = p[(y*W+x)*4];
+      ink[y*W+x] = (v < m*0.85 && m - v > 20) ? 1 : 0; } }
+  const kill = new Uint8Array(N), runH = Math.round(W*0.05), runV = Math.round(H*0.10);
+  for (let y=0;y<H;y++) for (let x=0, s=-1; x<=W; x++){ const on = x<W && ink[y*W+x];
+    if (on && s<0) s=x; else if (!on && s>=0){ if (x-s >= runH) for (let k=s;k<x;k++) kill[y*W+k]=1; s=-1; } }
+  for (let x=0;x<W;x++) for (let y=0, s=-1; y<=H; y++){ const on = y<H && ink[y*W+x];
+    if (on && s<0) s=y; else if (!on && s>=0){ if (y-s >= runV) for (let k=s;k<y;k++) kill[k*W+x]=1; s=-1; } }
+  // เส้นหนาหลายพิกเซล: ลบเพื่อนบ้านที่ติดเส้นด้วย
+  for (let i=0;i<N;i++){ const v = ink[i] && !kill[i] && !(kill[i-1] || kill[i+1] || kill[i-W] || kill[i+W]) ? 0 : 255; p[i*4]=p[i*4+1]=p[i*4+2]=v; p[i*4+3]=255; }
+  gx.putImageData(d, 0, 0); return g;
+}
+function findNos(texts, cands = []){
+  const toks = new Set();
+  for (const t of texts){
+    const u = t.replace(/[Oo]/g,'0').replace(/[Il|]/g,'1');
+    for (const m of u.matchAll(/\d[\d \-]{4,14}\d/g)) toks.add(m[0].replace(/\D/g,''));
+    for (const l of u.split('\n')) { const d = l.replace(/\D/g,''); if (d.length >= 6) toks.add(d); }
+  }
+  const L = LIST || [], found = {};
+  for (const x of L){
+    if ([...toks].some(k => k === x.no || (k.length <= x.no.length + 12 && k.includes(x.no)))) { found[x.id] = 'exact'; continue; }
+    // ต่าง 1 หลัก นับเฉพาะเมื่อไม่มีเช็คใบอื่นที่ใกล้เคียงพอ ๆ กัน (กันจับผิดใบ)
+    const near = [...toks].filter(k => k.length === x.no.length && lev(k, x.no) === 1);
+    if (near.length && !L.some(y => y !== x && near.some(k => lev(k, y.no) <= 1))) { found[x.id] = 'near'; continue; }
+    // เลขที่อ่านไม่ได้ แต่ยอดรายใบตรง (มีทศนิยม) และไม่มีเช็คใบอื่นยอดเท่ากัน → ติ๊กให้ แต่ให้ตรวจเลขที่
+    if (cands.some(c => c.score >= 2 && Math.abs(c.v - x.amt) < 0.005) && !L.some(y => y !== x && Math.abs(y.amt - x.amt) < 0.005)) found[x.id] = 'amt';
+  }
+  return found;
+}
+async function runPayin(url){
+  const img = $('pv'); img.src = url; img.style.display = 'block'; await img.decode();
+  $('bar').style.display = 'block'; $('bar').firstChild.style.width = '0';
+  $('st').textContent = 'กำลังอ่านใบ Pay-in… (ครั้งแรกอาจใช้เวลา 10–30 วินาที)';
+  let raw = '';
+  try {
+    const [we, , wt] = await workers(), full = gray(img);
+    const r1 = (await we.recognize(full, {}, {blocks: true})).data;
+    const lines = (r1.blocks||[]).flatMap(b => b.paragraphs.flatMap(p => p.lines));
+    const head = lines.filter(l => l.bbox.y1 < full.height * 0.35).map(l => l.text).join('\n');
+    const tt = (await wt.recognize(full)).data.text;
+    const ttHead = (await wt.recognize(gray(img, 0, 0, img.naturalWidth, img.naturalHeight*0.35))).data.text;
+    const clean = unlined(img);
+    await we.setParameters({tessedit_char_whitelist: '0123456789,.-/ '});
+    const d6 = (await we.recognize(full)).data.text + '\n' + (await we.recognize(clean)).data.text;
+    await we.setParameters({tessedit_pageseg_mode: '11'});
+    const d11 = (await we.recognize(full)).data.text + '\n' + (await we.recognize(clean)).data.text;
+    // แถวยอดรวม (รวม / TOTAL): ตัดเฉพาะแถว ขยาย แล้วอ่านแบบตัวเลขล้วนอีกรอบ · ค่าที่อ่านจากแถวนี้มีน้ำหนักกว่า
+    // ตารางมีเส้นกรอบ อ่านแบบปกติมักข้ามทั้งแถว → หาคำว่า TOTAL แบบกระจาย (PSM 11) ด้วย
+    await we.setParameters({tessedit_char_whitelist: '', tessedit_pageseg_mode: '11'});
+    const r11 = (await we.recognize(clean, {}, {blocks: true})).data;
+    await we.setParameters({tessedit_pageseg_mode: '6'});
+    const w11 = (r11.blocks||[]).flatMap(b => b.paragraphs.flatMap(p => p.lines.flatMap(l => l.words)));
+    raw += 'W11>> ' + r11.text + '\n';
+    const totLines = [...lines.filter(l => /total|ยอดรวม|grand/i.test(l.text)), ...w11.filter(w => /^total/i.test(w.text.trim()))];
+    const totC = [];
+    await we.setParameters({tessedit_char_whitelist: '0123456789,.', tessedit_pageseg_mode: '7'});
+    for (const l of totLines){
+      const b = l.bbox, h = b.y1 - b.y0, S = l.words ? full : clean;
+      const x0 = l.words ? 0 : b.x1;   // คำเดี่ยว TOTAL → อ่านเฉพาะด้านขวาของคำ
+      const c = gray(S, x0, Math.max(0, b.y0 - h*0.6), S.width - x0, Math.min(S.height - b.y0, h*2.2), 2600);
+      const t = (await we.recognize(c)).data.text; raw += 'TOT>> ' + t + '\n'; totC.push(...amountCands(t));
+    }
+    await we.setParameters({tessedit_char_whitelist: '', tessedit_pageseg_mode: '6'});
+    raw += 'ENG>> ' + r1.text + '\nTHA>> ' + tt + '\nD6>> ' + d6 + '\nD11>> ' + d11;
+    await listReady;
+    const cands = [...amountCands(r1.text), ...amountCands(d6), ...amountCands(d11)];
+    FOUND = findNos([r1.text, d6, d11], cands);
+    PAYIN_TOT = totC.filter(c => c.score >= 2 && !c.odd).map(c => c.v);
+    const acct = bankOfSlip(head + '\n' + ttHead, r1.text + '\n' + tt);
+    // วันที่: ถ้าวันไหนในใบตรงกับวันนี้ ใช้วันนี้ (ลายมือ 8 กับ 2 สับสนบ่อย)
+    const dts = [d6, d11, r1.text, tt].map(t => parseDate([t])).filter(Boolean);
+    const date = dts.includes(todayISO()) ? todayISO() : dts[0] || null;
+    showPayin(cands, acct, date);
+  } catch(err){
+    raw += '\nERR ' + err; FOUND = {}; showPayin([], null, null);
+    $('st').textContent = 'อ่านใบ Pay-in ไม่สำเร็จ · ติ๊กเช็คและกรอกยอดเองด้านล่าง';
+  }
+  $('bar').style.display = 'none';
+}
+const depState = () => ({ticked: [...document.querySelectorAll('#dList input:checked')].map(i => (LIST.find(x => x.id === i.value) || {}).no),
+  found: Object.keys(FOUND).length, total: $('dTotal').value, totalN: $('dTotalN').textContent, acct: $('dAcct').value, acctN: $('dAcctN').textContent,
+  date: $('dDate').value, dateN: $('dDateN').textContent, banner: $('dBanner').textContent, sum: $('dSum').textContent});
+function renderDepList(){
+  const L = LIST || [];
+  $('dCount').textContent = '(รอนำฝาก ' + L.length + ' ใบ · ติ๊กได้สูงสุด 10 ใบต่อ 1 ใบ Pay-in)';
+  $('dList').innerHTML = L.length ? L.map(x => `<label class="drow"><input type="checkbox" value="${esc(x.id)}"${FOUND[x.id] ? ' checked' : ''}>` +
+    `<span><b>${esc(x.no)}</b> · ${fmt(x.amt)} บาท<br><span class="hint">${esc(shortBank(x.bank))}${x.payer ? ' · ' + esc(x.payer) : ''}${x.dept ? ' · ' + esc(x.dept) : ''}</span>` +
+    (PAYIN ? (FOUND[x.id] ? `<br><span class="tag ok">📄 พบในใบ Pay-in${FOUND[x.id] === 'near' ? ' (เลขต่าง 1 หลัก ตรวจอีกครั้ง)' : FOUND[x.id] === 'amt' ? ' (จากยอดเงิน · ตรวจเลขที่อีกครั้ง)' : ''}</span>` : '<span class="tagslot"></span>') : '') +
+    '</span></label>').join('') : '<p class="hint">ไม่มีเช็คที่รอนำฝาก</p>';
+  depCheck();
+}
+function depCheck(){
+  const boxes = [...document.querySelectorAll('#dList input')];
+  const on = boxes.filter(b => b.checked), items = on.map(b => LIST.find(x => x.id === b.value));
+  const sum = Math.round(items.reduce((a, x) => a + x.amt, 0) * 100) / 100;
+  // ติ๊กเอง แต่ไม่พบในใบ Pay-in → เตือน
+  boxes.forEach(b => { const slot = b.parentNode.querySelector('.tagslot'); if (slot) slot.innerHTML = b.checked ? '<br><span class="tag no">⚠️ ไม่พบเลขนี้ในใบ Pay-in · ตรวจกับใบอีกครั้ง</span>' : ''; });
+  const total = +$('dTotal').value.replace(/[^\d.]/g, '');
+  const W = [];
+  if (on.length > 10) W.push('<div class="warn">เลือกได้สูงสุด 10 ใบต่อ 1 ครั้ง · ถ้าใบ Pay-in มีมากกว่า 10 ใบ ส่ง 2 ครั้ง</div>');
+  if (on.length && total > 0){
+    const diff = Math.round((total - sum) * 100) / 100;
+    W.push(Math.abs(diff) < 0.005 ? '<div class="good">✅ <b>ยอดในใบ Pay-in ตรงกับเช็คที่เลือก</b> · ' + on.length + ' ใบ · ' + fmt(sum) + ' บาท</div>'
+      : '<div class="warn">⚠️ <b>ยอดไม่ตรง</b> · เช็คที่เลือก ' + on.length + ' ใบ รวม ' + fmt(sum) + ' บาท · ใบ Pay-in ' + fmt(total) + ' บาท (ต่าง ' + fmt(diff) + ')<br>ตรวจว่าติ๊กครบไหม หรือยอดในใบอ่านถูกไหม · ถ้าต่างจริง ส่งได้ ระบบจะแจ้งให้อธิบายยอด</div>');
+  }
+  $('dSum').innerHTML = W.join('');
+  $('dSend').disabled = !on.length || on.length > 10;
+}
+function showPayin(cands, acct, date){
+  PAYIN = {};
+  $('dep').style.display = 'block'; $('dN').innerHTML = '';
+  renderDepList();
+  const on = [...document.querySelectorAll('#dList input:checked')].map(b => LIST.find(x => x.id === b.value));
+  const sum = Math.round(on.reduce((a, x) => a + x.amt, 0) * 100) / 100;
+  // ยอดรวม: ถ้ามีตัวเลขในใบที่เท่ากับผลรวมเช็คที่พบ = มั่นใจ · ไม่งั้นใช้ยอดที่มากที่สุดที่มีทศนิยม
+  const vals = cands.map(c => c.v);
+  let total = null, sure = false;
+  // อ่านแถว TOTAL ได้ → ใช้ค่านั้นเสมอ (ไม่งั้นยอดรายใบที่บังเอิญเท่าผลรวมจะหลอกได้)
+  if (PAYIN_TOT.length){ total = PAYIN_TOT.find(v => Math.abs(v - sum) < 0.005) ?? Math.max(...PAYIN_TOT); sure = Math.abs(total - sum) < 0.005; }
+  else if (sum && on.length > 1 && vals.some(v => Math.abs(v - sum) < 0.005)) { total = sum; sure = true; }
+  else { const dec = cands.filter(c => c.score >= 2 && !c.odd).map(c => c.v); if (dec.length) total = Math.max(...dec); }
+  $('dTotal').value = total != null ? fmt(total) : '';
+  note('dTotalN', sure, 'อ่านจากใบ Pay-in · ตรงกับผลรวมเช็คที่พบ', total != null ? '⚠️ อ่านได้แต่ไม่มั่นใจ · ตรวจกับยอดรวมในใบ Pay-in' : 'อ่านยอดในใบไม่ได้ · พิมพ์ยอดรวมตามใบ Pay-in');
+  $('dAcct').value = acct || '';
+  note('dAcctN', acct, 'อ่านชื่อธนาคารจากหัวใบ Pay-in · ตรวจอีกครั้ง', 'อ่านชื่อธนาคารไม่ได้ · เลือกเอง');
+  const today = todayISO(), age = date ? (new Date(today) - new Date(date)) / 864e5 : null;
+  // ส่วนใหญ่ถ่ายใบ Pay-in วันที่ฝาก → ใส่วันนี้ · ถ้าใบอ่านได้วันอื่น เตือนให้ดู
+  $('dDate').value = today;
+  note('dDateN', date === today, 'ตรงกับวันที่ในใบ Pay-in',
+    date && age > 0 && age <= 30 ? '⚠️ ใส่วันนี้ไว้ให้ · ใบ Pay-in อ่านได้ ' + thDate(date) + ' ถ้าฝากวันนั้นจริง แก้วันที่' : 'ใส่วันนี้ไว้ให้ · ถ้าฝากวันอื่น แก้ได้');
+  const n = on.length, L = LIST || [];
+  $('dBanner').innerHTML = !L.length ? '<div class="warn">ไม่มีเช็คที่รอนำฝากในระบบ · ต้องรับเช็คก่อน (หน้า ② รับเช็ค)</div>'
+    : n ? '<div class="good">📄 พบเช็คในใบ Pay-in <b>' + n + ' ใบ</b> ติ๊กให้แล้ว · ใบที่ไม่พบ ติ๊กเพิ่มเองได้</div>'
+    : '<div class="warn">⚠️ <b>ไม่พบเลขที่เช็คที่รอนำฝากในใบ Pay-in</b><br>ถ่ายใหม่ให้เห็นช่องเลขที่เช็คชัด หรือติ๊กเช็คที่อยู่ในใบเอง</div>';
+  depCheck();
+  $('st').textContent = 'อ่านเสร็จ';
+  $('dep').scrollIntoView({behavior: 'smooth'});
+}
+async function depSend(){
+  const ids = [...document.querySelectorAll('#dList input:checked')].map(b => b.value), items = ids.map(id => LIST.find(x => x.id === id));
+  const f = {acct: $('dAcct').value, nos: items.map(x => x.no), total: +$('dTotal').value.replace(/[^\d.]/g, ''), date: $('dDate').value};
+  const miss = [];
+  if (!items.length) miss.push(['dList', 'ติ๊กเช็คอย่างน้อย 1 ใบ']);
+  if (!f.acct) miss.push(['dAcct', 'ธนาคารที่นำฝาก']);
+  if (!(f.total > 0)) miss.push(['dTotal', 'ยอดรวมตามใบ Pay-in']);
+  if (!f.date) miss.push(['dDate', 'วันที่นำฝาก']);
+  if (!$('pv').src || $('pv').style.display === 'none') miss.push(['cam', 'รูปใบ Pay-in']);
+  if (miss.length){ $('dN').innerHTML = '<div class="warn" style="margin-top:8px">กรอกให้ครบก่อนส่ง: ' + miss.map(m => m[1]).join(', ') + '</div>'; return; }
+  const sess = load('cs_session'); if (!sess) return toLoginPage();
+  $('dSend').disabled = true; $('dSend').textContent = 'กำลังส่ง…'; $('dN').innerHTML = '';
+  try {
+    const r = await fetch(WORKER + '/deposit', {method: 'POST', body: await photoBlob(),
+      headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Fields': encodeURIComponent(JSON.stringify(f))}});
+    const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+    const d = await r.json().catch(() => ({}));
+    if (d.login){ store('cs_session', null); return toLoginPage(); }
+    if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    LIST = LIST.filter(x => !items.includes(x));
+    $('dep').style.display = 'none'; $('done').style.display = 'block';
+    $('doneT').textContent = 'นำฝาก ' + items.length + ' ใบ (' + f.nos.join(', ') + ') · ยอดตามใบ Pay-in ' + fmt(f.total) + ' บาท · ' + f.acct.split(' · ')[0];
+    $('done').scrollIntoView({behavior: 'smooth'});
+  } catch(e){
+    $('dN').innerHTML = '<div class="warn" style="margin-top:8px">❌ ส่งไม่สำเร็จ: ' + esc(e.message) + '<br>ลองกดอีกครั้ง</div>';
+  } finally { $('dSend').textContent = '🏦 ส่งนำฝาก'; if ($('dep').style.display !== 'none') depCheck();
+  }
+}
+async function initDeposit(){
+  document.title = 'นำฝากเช็ค'; $('h1').textContent = '🏦 นำฝากเช็ค → ถ่ายใบ Pay-in';
+  $('camHint').innerHTML = 'ฝากเช็คที่ธนาคารแล้ว ถ่าย<b>ใบ Pay-in</b> ให้เต็มจอ เห็นช่องเลขที่เช็คและยอดรวมชัด · ระบบจะติ๊กเช็คที่อยู่ในใบให้';
+  document.querySelector('label[for=cam]').textContent = 'ถ่ายรูป / เลือกรูปใบ Pay-in';
+  $('pv').alt = 'รูปใบ Pay-in';
+  $('dAcct').innerHTML = '<option value="">— เลือก —</option>' + ACCOUNTS.map(a => `<option>${a[0]}</option>`).join('');
+  $('loginBtn').onclick = toLoginPage;
+  $('loginBox').querySelector('p').textContent = 'เข้าสู่ระบบ Lark ก่อน 1 ครั้ง เพื่อดึงรายการเช็คที่รอนำฝาก';
+  $('doneH').textContent = '✅ ส่งนำฝากแล้ว'; $('next').textContent = 'นำฝากใบ Pay-in ถัดไป';
+  $('doneHint').textContent = 'ระบบเปลี่ยนสถานะเช็คเป็น "นำฝากแล้ว" เทียบยอด และแจ้งกลุ่มให้แล้ว · รอ Treasury ยืนยันเงินเข้า';
+  try {
+    if (!load('cs_session')){ $('loginBox').style.display = 'block'; return; }
+    $('st').textContent = 'กำลังดึงรายการเช็คที่รอนำฝาก…';
+    await (listReady = loadList('deposit'));
+    if (!LIST){ $('loginBox').style.display = 'block'; $('st').textContent = ''; return; }
+    $('st').textContent = 'รอนำฝาก ' + LIST.length + ' ใบ' + (load('cs_name') ? ' · ' + load('cs_name') : '');
+    if (!PAYIN){ FOUND = {}; $('dep').style.display = 'block'; $('dBanner').innerHTML = ''; renderDepList(); $('dTotal').value = ''; $('dDate').value = todayISO(); }
+  } catch(e){ $('st').textContent = '❌ ดึงรายการไม่สำเร็จ: ' + e.message + ' · รีเฟรชหน้า'; }
+}
+$('dList').addEventListener('change', depCheck);
+$('dTotal').addEventListener('input', depCheck);
+$('dSend').addEventListener('click', depSend);
+$('dAgain').addEventListener('click', () => { $('cam').value=''; $('cam').click(); });
+if (MODE === 'deposit') initDeposit();
+
+$('next').addEventListener('click', () => { $('done').style.display = 'none'; $('cam').value=''; $('pv').style.display='none'; $('st').textContent=''; window.scrollTo(0,0); $('cam').click(); });
+</script>
+</body>
+</html>
