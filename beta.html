@@ -520,6 +520,7 @@ async function send(){
     if (d.name) store('cs_name', d.name);
     $('review').style.display = 'none'; $('done').style.display = 'block';
     $('doneT').textContent = 'เลขที่เช็ค ' + f.no + ' · ' + fmt(f.amt) + ' บาท' + (d.name ? ' · ส่งในชื่อ ' + d.name : '');
+    if (d.mode === 'no-photo') $('doneT').textContent += ' · ⚠️ ส่งข้อมูลแล้ว แต่แนบรูปไม่สำเร็จ แจ้งแพต';
     $('done').scrollIntoView({behavior:'smooth'});
   } catch(e){
     sendNote('❌ ส่งไม่สำเร็จ: ' + e.message + '<br>ลองกดส่งอีกครั้ง หรือกด "กรอกในฟอร์มส่งเช็คแทน" ด้านล่าง', true);
