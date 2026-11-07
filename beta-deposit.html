@@ -701,7 +701,7 @@ async function receiveSend(){
   $('rSend').disabled = true; $('rSend').textContent = 'กำลังส่ง…'; $('rN').innerHTML = '';
   try {
     const r = await fetch(WORKER + '/receive', {method: 'POST', body: await photoBlob(),
-      headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Fields': encodeURIComponent(JSON.stringify({no: it.no}))}});
+      headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Fields': encodeURIComponent(JSON.stringify({no: it.no, ref: it.ref}))}});
     const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
     const d = await r.json().catch(() => ({}));
     if (d.login){ store('cs_session', null); return toLoginPage(); }
