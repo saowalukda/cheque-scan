@@ -36,6 +36,11 @@ a.btn{text-decoration:none;margin-top:8px}
 .drow input{width:22px;height:22px;flex:none;margin-top:2px}
 .tag{display:inline-block;font-size:12px;border-radius:6px;padding:1px 6px;margin-top:2px}
 .tag.ok{background:#ecfdf3;color:#05603a}.tag.no{background:#fef0c7;color:#7a2e0e}
+#cfm .ph{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+#cfm .ph figure{margin:0}#cfm .ph figcaption{font-size:12px;color:var(--mute);margin-top:2px}
+#cfm .ph img{width:100%;border-radius:8px;border:1px solid var(--line);background:#f2f4f7;min-height:90px;object-fit:contain;cursor:zoom-in}
+#cfm .ph img.big{position:fixed;inset:0;width:100vw;height:100vh;z-index:9;background:#000;border:0;border-radius:0;cursor:zoom-out}
+#cfm .ph .no{font-size:13px;color:var(--mute);padding:20px 6px;border:1px dashed var(--line);border-radius:8px;text-align:center}
 </style>
 </head>
 <body>
@@ -122,7 +127,7 @@ a.btn{text-decoration:none;margin-top:8px}
 <div class="card" id="dep" style="display:none">
   <div class="step">ขั้นที่ 2 · ตรวจรายการนำฝาก แล้วกดส่ง</div>
   <div id="dBanner"></div>
-  <label>เช็คในใบ Pay-in นี้ <span class="hint" id="dCount"></span></label>
+  <label>เช็คในใบ Pay-in นี้ (1 ใบ) <span class="hint" id="dCount"></span></label>
   <div id="dList"></div>
   <div id="dSum" style="margin-top:8px"></div>
   <label for="dAcct">ธนาคารที่นำฝาก (บัญชีรับเงินของโรงพยาบาล)</label>
@@ -135,6 +140,10 @@ a.btn{text-decoration:none;margin-top:8px}
   <div id="dN"></div>
   <button class="btn sec" id="dAgain" style="margin-top:8px">ถ่ายใบ Pay-in ใหม่</button>
   <p class="hint" style="margin-top:12px">ถ่ายรูปไม่ได้? <a href="https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpEs17TR8qt1LaMU9FXzTpmb" target="_blank" rel="noopener">กรอกในฟอร์มนำฝากแทน</a></p>
+</div>
+
+<div id="cfm" style="display:none">
+  <div id="cList"></div>
 </div>
 
 <div class="card" id="done" style="display:none">
@@ -170,7 +179,7 @@ const PAYERS = ["AIA","เมืองไทยประกันชีวิต
 const $ = id => document.getElementById(id);
 // หน้าเดียวกันใช้ 2 แบบ: ส่งเช็ค (แผนก ①) / รับเช็ค (การเงิน ② · receive.html หรือ ?m=receive)
 // ③ นำฝาก: deposit.html หรือ ?m=deposit (ถ่ายใบ Pay-in → ติ๊กเช็คที่อยู่ในใบให้)
-const MODE = (location.pathname.match(/(receive|deposit)/) || [])[1] || new URLSearchParams(location.search).get('m') || 'send';
+const MODE = (location.pathname.match(/(receive|deposit|confirm)/) || [])[1] || new URLSearchParams(location.search).get('m') || 'send';
 const fill = (sel, opts) => { sel.innerHTML = '<option value="">— เลือก —</option>' + opts.map(o=>`<option>${o}</option>`).join(''); };
 fill($('bank'), BANK_OPTS); fill($('payer'), PAYERS);
 
@@ -397,6 +406,7 @@ $('cam').addEventListener('change', e => { const f = e.target.files[0]; if (f){ 
 
 async function run(url){
   if (MODE === 'deposit') return runPayin(url);
+  if (MODE === 'confirm') return;
   const img = $('pv');
   img.src = url; img.style.display = 'block';
   await img.decode();
@@ -757,7 +767,8 @@ const ACCOUNTS = [
  ['BAY · ธนาคารกรุงศรีอยุธยา (Krungsri)', /KRUNGSRI|AYUDHYA|กรุงศรี/i],
  ['KTB · ธนาคารกรุงไทย', /KRUNG\s*THAI\s*BANK|\bKTB\b|ธนาคารกรุงไทย/i],
 ];
-let FOUND = {};   // id → true (พบเลขนี้ในใบ Pay-in)
+let FOUND = {};   // id → วิธีที่พบ · เช็คที่เลือกให้ (กฎ 1 ใบ Pay-in = เช็ค 1 ใบ)
+let FOUND_ALL = {}; // ทุกใบที่พบเลขในใบ Pay-in (ใช้แสดงป้าย/เตือน)
 let PAYIN = null; // ค่าที่อ่านจากใบ: total, sure
 let PAYIN_TOT = [];  // ยอดที่อ่านจากแถว รวม/TOTAL
 function bankOfSlip(head, all){
@@ -843,28 +854,34 @@ async function runPayin(url){
     raw += 'ENG>> ' + r1.text + '\nTHA>> ' + tt + '\nD6>> ' + d6 + '\nD11>> ' + d11;
     await listReady;
     const cands = [...amountCands(r1.text), ...amountCands(d6), ...amountCands(d11)];
-    FOUND = findNos([r1.text, d6, d11], cands);
     PAYIN_TOT = totC.filter(c => c.score >= 2 && !c.odd).map(c => c.v);
+    FOUND_ALL = findNos([r1.text, d6, d11], cands); FOUND = {...FOUND_ALL};
+    // กฎ 1 ใบ Pay-in = เช็ค 1 ใบ: ถ้าพบหลายใบ เลือกใบที่ยอดตรงกับยอดในใบ (แถว TOTAL) ถ้าตรงใบเดียว ไม่งั้นไม่เลือกให้
+    const ids = Object.keys(FOUND_ALL);
+    if (ids.length > 1){
+      const m = ids.filter(id => { const x = LIST.find(y => y.id === id); return PAYIN_TOT.some(v => Math.abs(v - x.amt) < 0.005); });
+      FOUND = m.length === 1 ? {[m[0]]: FOUND_ALL[m[0]]} : {};
+    }
     const acct = bankOfSlip(head + '\n' + ttHead, r1.text + '\n' + tt);
     // วันที่: ถ้าวันไหนในใบตรงกับวันนี้ ใช้วันนี้ (ลายมือ 8 กับ 2 สับสนบ่อย)
     const dts = [d6, d11, r1.text, tt].map(t => parseDate([t])).filter(Boolean);
     const date = dts.includes(todayISO()) ? todayISO() : dts[0] || null;
     showPayin(cands, acct, date);
   } catch(err){
-    raw += '\nERR ' + err; FOUND = {}; showPayin([], null, null);
+    raw += '\nERR ' + err; FOUND = {}; FOUND_ALL = {}; showPayin([], null, null);
     $('st').textContent = 'อ่านใบ Pay-in ไม่สำเร็จ · ติ๊กเช็คและกรอกยอดเองด้านล่าง';
   }
   $('bar').style.display = 'none';
 }
-const depState = () => ({ticked: [...document.querySelectorAll('#dList input:checked')].map(i => (LIST.find(x => x.id === i.value) || {}).no),
+const depState = () => ({foundAll: Object.keys(FOUND_ALL).length, ticked: [...document.querySelectorAll('#dList input:checked')].map(i => (LIST.find(x => x.id === i.value) || {}).no),
   found: Object.keys(FOUND).length, total: $('dTotal').value, totalN: $('dTotalN').textContent, acct: $('dAcct').value, acctN: $('dAcctN').textContent,
   date: $('dDate').value, dateN: $('dDateN').textContent, banner: $('dBanner').textContent, sum: $('dSum').textContent});
 function renderDepList(){
   const L = LIST || [];
-  $('dCount').textContent = '(รอนำฝาก ' + L.length + ' ใบ · ติ๊กได้สูงสุด 10 ใบต่อ 1 ใบ Pay-in)';
+  $('dCount').textContent = '(รอนำฝาก ' + L.length + ' ใบ · เลือกได้ 1 ใบต่อ 1 ใบ Pay-in)';
   $('dList').innerHTML = L.length ? L.map(x => `<label class="drow"><input type="checkbox" value="${esc(x.id)}"${FOUND[x.id] ? ' checked' : ''}>` +
     `<span><b>${esc(x.no)}</b> · ${fmt(x.amt)} บาท<br><span class="hint">${esc(shortBank(x.bank))}${x.payer ? ' · ' + esc(x.payer) : ''}${x.dept ? ' · ' + esc(x.dept) : ''}</span>` +
-    (PAYIN ? (FOUND[x.id] ? `<br><span class="tag ok">📄 พบในใบ Pay-in${FOUND[x.id] === 'near' ? ' (เลขต่าง 1 หลัก ตรวจอีกครั้ง)' : FOUND[x.id] === 'amt' ? ' (จากยอดเงิน · ตรวจเลขที่อีกครั้ง)' : ''}</span>` : '<span class="tagslot"></span>') : '') +
+    (PAYIN ? (FOUND_ALL[x.id] ? `<br><span class="tag ok">📄 พบในใบ Pay-in${FOUND_ALL[x.id] === 'near' ? ' (เลขต่าง 1 หลัก ตรวจอีกครั้ง)' : FOUND_ALL[x.id] === 'amt' ? ' (จากยอดเงิน · ตรวจเลขที่อีกครั้ง)' : ''}</span>` : '<span class="tagslot"></span>') : '') +
     '</span></label>').join('') : '<p class="hint">ไม่มีเช็คที่รอนำฝาก</p>';
   depCheck();
 }
@@ -876,14 +893,14 @@ function depCheck(){
   boxes.forEach(b => { const slot = b.parentNode.querySelector('.tagslot'); if (slot) slot.innerHTML = b.checked ? '<br><span class="tag no">⚠️ ไม่พบเลขนี้ในใบ Pay-in · ตรวจกับใบอีกครั้ง</span>' : ''; });
   const total = +$('dTotal').value.replace(/[^\d.]/g, '');
   const W = [];
-  if (on.length > 10) W.push('<div class="warn">เลือกได้สูงสุด 10 ใบต่อ 1 ครั้ง · ถ้าใบ Pay-in มีมากกว่า 10 ใบ ส่ง 2 ครั้ง</div>');
+
   if (on.length && total > 0){
     const diff = Math.round((total - sum) * 100) / 100;
-    W.push(Math.abs(diff) < 0.005 ? '<div class="good">✅ <b>ยอดในใบ Pay-in ตรงกับเช็คที่เลือก</b> · ' + on.length + ' ใบ · ' + fmt(sum) + ' บาท</div>'
-      : '<div class="warn">⚠️ <b>ยอดไม่ตรง</b> · เช็คที่เลือก ' + on.length + ' ใบ รวม ' + fmt(sum) + ' บาท · ใบ Pay-in ' + fmt(total) + ' บาท (ต่าง ' + fmt(diff) + ')<br>ตรวจว่าติ๊กครบไหม หรือยอดในใบอ่านถูกไหม · ถ้าต่างจริง ส่งได้ ระบบจะแจ้งให้อธิบายยอด</div>');
+    W.push(Math.abs(diff) < 0.005 ? '<div class="good">✅ <b>ยอดในใบ Pay-in ตรงกับเช็คใบนี้</b> · ' + fmt(sum) + ' บาท</div>'
+      : '<div class="warn">⚠️ <b>ยอดไม่ตรง</b> · เช็ค ' + fmt(sum) + ' บาท · ใบ Pay-in ' + fmt(total) + ' บาท (ต่าง ' + fmt(diff) + ')<br>ตรวจว่าเลือกเช็คถูกใบไหม หรือยอดในใบอ่านถูกไหม · ถ้าต่างจริง ส่งได้ ระบบจะแจ้งให้อธิบายยอด</div>');
   }
   $('dSum').innerHTML = W.join('');
-  $('dSend').disabled = !on.length || on.length > 10;
+  $('dSend').disabled = on.length !== 1;
 }
 function showPayin(cands, acct, date){
   PAYIN = {};
@@ -896,10 +913,10 @@ function showPayin(cands, acct, date){
   let total = null, sure = false;
   // อ่านแถว TOTAL ได้ → ใช้ค่านั้นเสมอ (ไม่งั้นยอดรายใบที่บังเอิญเท่าผลรวมจะหลอกได้)
   if (PAYIN_TOT.length){ total = PAYIN_TOT.find(v => Math.abs(v - sum) < 0.005) ?? Math.max(...PAYIN_TOT); sure = Math.abs(total - sum) < 0.005; }
-  else if (sum && on.length > 1 && vals.some(v => Math.abs(v - sum) < 0.005)) { total = sum; sure = true; }
+  else if (sum && on.length === 1 && vals.some(v => Math.abs(v - sum) < 0.005)) { total = sum; sure = true; }
   else { const dec = cands.filter(c => c.score >= 2 && !c.odd).map(c => c.v); if (dec.length) total = Math.max(...dec); }
   $('dTotal').value = total != null ? fmt(total) : '';
-  note('dTotalN', sure, 'อ่านจากใบ Pay-in · ตรงกับผลรวมเช็คที่พบ', total != null ? '⚠️ อ่านได้แต่ไม่มั่นใจ · ตรวจกับยอดรวมในใบ Pay-in' : 'อ่านยอดในใบไม่ได้ · พิมพ์ยอดรวมตามใบ Pay-in');
+  note('dTotalN', sure, 'อ่านจากใบ Pay-in · ตรงกับยอดเช็ค', total != null ? '⚠️ อ่านได้แต่ไม่มั่นใจ · ตรวจกับยอดรวมในใบ Pay-in' : 'อ่านยอดในใบไม่ได้ · พิมพ์ยอดรวมตามใบ Pay-in');
   $('dAcct').value = acct || '';
   note('dAcctN', acct, 'อ่านชื่อธนาคารจากหัวใบ Pay-in · ตรวจอีกครั้ง', 'อ่านชื่อธนาคารไม่ได้ · เลือกเอง');
   const today = todayISO(), age = date ? (new Date(today) - new Date(date)) / 864e5 : null;
@@ -909,17 +926,18 @@ function showPayin(cands, acct, date){
     date && age > 0 && age <= 30 ? '⚠️ ใส่วันนี้ไว้ให้ · ใบ Pay-in อ่านได้ ' + thDate(date) + ' ถ้าฝากวันนั้นจริง แก้วันที่' : 'ใส่วันนี้ไว้ให้ · ถ้าฝากวันอื่น แก้ได้');
   const n = on.length, L = LIST || [];
   $('dBanner').innerHTML = !L.length ? '<div class="warn">ไม่มีเช็คที่รอนำฝากในระบบ · ต้องรับเช็คก่อน (หน้า ② รับเช็ค)</div>'
-    : n ? '<div class="good">📄 พบเช็คในใบ Pay-in <b>' + n + ' ใบ</b> ติ๊กให้แล้ว · ใบที่ไม่พบ ติ๊กเพิ่มเองได้</div>'
-    : '<div class="warn">⚠️ <b>ไม่พบเลขที่เช็คที่รอนำฝากในใบ Pay-in</b><br>ถ่ายใหม่ให้เห็นช่องเลขที่เช็คชัด หรือติ๊กเช็คที่อยู่ในใบเอง</div>';
+    : Object.keys(FOUND_ALL).length > 1 ? '<div class="warn">⚠️ <b>ใบ Pay-in นี้มีเลขที่เช็ค ' + Object.keys(FOUND_ALL).length + ' ใบ</b> · กฎ: ใบ Pay-in 1 ใบ ต่อเช็ค 1 ใบ' + (n ? ' · เลือกใบที่ยอดตรงกับใบ Pay-in ให้แล้ว' : '') + '<br>ตรวจว่าถ่ายใบ Pay-in ถูกใบไหม</div>'
+    : n ? '<div class="good">📄 พบเช็คในใบ Pay-in เลือกให้แล้ว · ถ้าไม่ใช่ใบนี้ เลือกใบอื่นได้</div>'
+    : '<div class="warn">⚠️ <b>ไม่พบเลขที่เช็คที่รอนำฝากในใบ Pay-in</b><br>ถ่ายใหม่ให้เห็นช่องเลขที่เช็คชัด หรือเลือกเช็คในใบเอง</div>';
   depCheck();
   $('st').textContent = 'อ่านเสร็จ';
   $('dep').scrollIntoView({behavior: 'smooth'});
 }
 async function depSend(){
   const ids = [...document.querySelectorAll('#dList input:checked')].map(b => b.value), items = ids.map(id => LIST.find(x => x.id === id));
-  const f = {acct: $('dAcct').value, nos: items.map(x => x.no), total: +$('dTotal').value.replace(/[^\d.]/g, ''), date: $('dDate').value};
+  const f = {acct: $('dAcct').value, nos: items.map(x => x.no), ref: items.length === 1 ? items[0].ref : '', total: +$('dTotal').value.replace(/[^\d.]/g, ''), date: $('dDate').value};
   const miss = [];
-  if (!items.length) miss.push(['dList', 'ติ๊กเช็คอย่างน้อย 1 ใบ']);
+  if (items.length !== 1) miss.push(['dList', 'เลือกเช็ค 1 ใบ']);
   if (!f.acct) miss.push(['dAcct', 'ธนาคารที่นำฝาก']);
   if (!(f.total > 0)) miss.push(['dTotal', 'ยอดรวมตามใบ Pay-in']);
   if (!f.date) miss.push(['dDate', 'วันที่นำฝาก']);
@@ -936,7 +954,7 @@ async function depSend(){
     if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
     LIST = LIST.filter(x => !items.includes(x));
     $('dep').style.display = 'none'; $('done').style.display = 'block';
-    $('doneT').textContent = 'นำฝาก ' + items.length + ' ใบ (' + f.nos.join(', ') + ') · ยอดตามใบ Pay-in ' + fmt(f.total) + ' บาท · ' + f.acct.split(' · ')[0];
+    $('doneT').textContent = 'นำฝากเช็คเลขที่ ' + f.nos[0] + ' · ยอดตามใบ Pay-in ' + fmt(f.total) + ' บาท · ' + f.acct.split(' · ')[0];
     $('done').scrollIntoView({behavior: 'smooth'});
   } catch(e){
     $('dN').innerHTML = '<div class="warn" style="margin-top:8px">❌ ส่งไม่สำเร็จ: ' + esc(e.message) + '<br>ลองกดอีกครั้ง</div>';
@@ -959,14 +977,97 @@ async function initDeposit(){
     await (listReady = loadList('deposit'));
     if (!LIST){ $('loginBox').style.display = 'block'; $('st').textContent = ''; return; }
     $('st').textContent = 'รอนำฝาก ' + LIST.length + ' ใบ' + (load('cs_name') ? ' · ' + load('cs_name') : '');
-    if (!PAYIN){ FOUND = {}; $('dep').style.display = 'block'; $('dBanner').innerHTML = ''; renderDepList(); $('dTotal').value = ''; $('dDate').value = todayISO(); }
+    if (!PAYIN){ FOUND = {}; FOUND_ALL = {}; $('dep').style.display = 'block'; $('dBanner').innerHTML = ''; renderDepList(); $('dTotal').value = ''; $('dDate').value = todayISO(); }
   } catch(e){ $('st').textContent = '❌ ดึงรายการไม่สำเร็จ: ' + e.message + ' · รีเฟรชหน้า'; }
 }
-$('dList').addEventListener('change', depCheck);
+// เลือกได้ใบเดียว (1 ใบ Pay-in = เช็ค 1 ใบ)
+$('dList').addEventListener('change', e => { if (e.target.checked) document.querySelectorAll('#dList input').forEach(b => { if (b !== e.target) b.checked = false; }); depCheck(); });
 $('dTotal').addEventListener('input', depCheck);
 $('dSend').addEventListener('click', depSend);
 $('dAgain').addEventListener('click', () => { $('cam').value=''; $('cam').click(); });
 if (MODE === 'deposit') initDeposit();
+
+// ── ④ ยืนยันเงินเข้า (Treasury): ดูรูปเช็ค + ใบ Pay-in + ข้อมูลที่จับคู่กัน เทียบกับรายการธนาคาร แล้วยืนยัน ──────────
+const RETURN_FORM = "https://ujpzitc70et6.jp.larksuite.com/share/base/shrjp5mML0gj9FMuwlGavRSHKKe";
+const imgCache = {};
+async function loadImg(el, f){
+  if (!f){ el.outerHTML = '<div class="no">ไม่มีรูป</div>'; return; }
+  try {
+    if (!imgCache[f.t]){
+      const r = await fetch(WORKER + '/file', {method: 'POST', headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'application/json'}, body: JSON.stringify(f)});
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+      imgCache[f.t] = URL.createObjectURL(await r.blob());
+    }
+    el.src = imgCache[f.t];
+  } catch(e){ el.outerHTML = '<div class="no">ดึงรูปไม่ได้: ' + esc(e.message) + '</div>'; }
+}
+const dmy = ms => ms ? thDate(bkkDate(ms)) : '—';
+function cfmCard(x){
+  const b = x.batch || {}, same = Math.abs((b.total || 0) - x.amt) < 0.005, me = load('cs_name') || '', self = me && b.by && b.by === me;
+  const rows = [['เลขที่เช็ค', esc(x.no)], ['ธนาคารเช็ค', esc(shortBank(x.bank))], ['ผู้สั่งจ่าย', esc(x.payer || '—')],
+    ['ยอดเช็ค', '<b>' + fmt(x.amt) + '</b> บาท'],
+    ['ยอดตามใบ Pay-in', fmt(b.total || 0) + ' บาท ' + (same ? '<span class="r-ok">✅ ตรงกับยอดเช็ค</span>' : '<span class="r-bad">❌ ไม่ตรง (ต่าง ' + fmt((b.total || 0) - x.amt) + ')</span>')],
+    ['ฝากเข้าบัญชี', esc(b.acct || '—')], ['วันที่นำฝาก', dmy(b.date)], ['รอบนำฝาก', esc(b.no || '—')],
+    ['ส่ง / รับ / ฝาก', esc([x.by, x.recvBy, b.by].map(v => v || '—').join(' / '))], ['เลขอ้างอิง', esc(x.ref)]];
+  const q = new URLSearchParams({'prefill_เลขที่เช็คที่ถูกคืน': x.no});
+  return `<div class="card" data-id="${esc(x.id)}">
+    <div style="font-weight:700;font-size:17px">🏦 ${esc(x.no)} · ${fmt(x.amt)} บาท</div>
+    <div class="ph">
+      <figure><img data-k="chq" alt="รูปเช็ค"><figcaption>รูปเช็ค (AR ถ่ายตอนส่ง)</figcaption></figure>
+      <figure><img data-k="pay" alt="รูปใบ Pay-in"><figcaption>รูปใบ Pay-in</figcaption></figure>
+      ${x.receipt && x.receipt.length ? '<figure><img data-k="rcp" alt="รูปเช็คตอนการเงินรับ"><figcaption>รูปเช็ค (การเงินถ่ายตอนรับ)</figcaption></figure>' : ''}
+    </div>
+    <table class="cmp">${rows.map(r => `<tr><td style="width:38%">${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>
+    <p class="hint" style="margin-top:10px">เทียบกับรายการเงินเข้าในระบบธนาคาร (ยอด · วันที่ · บัญชี) แล้วค่อยกดยืนยัน</p>
+    ${self ? '<div class="warn">คุณเป็นคนนำฝากรายการนี้ ยืนยันเองไม่ได้ · ให้ Treasury อีกคนยืนยัน</div>' : ''}
+    <label>อ้างอิง Statement (ไม่บังคับ)</label><input class="cStmt" autocomplete="off" placeholder="เช่น เลขรายการในระบบธนาคาร">
+    <button class="btn cOk" style="margin-top:12px"${self ? ' disabled' : ''}>✅ เงินเข้าแล้ว</button>
+    <div class="cN"></div>
+    <a class="btn sec" target="_blank" rel="noopener" href="${RETURN_FORM}?${q.toString().replace(/\+/g, '%20')}">🔴 เช็คคืน / เงินไม่เข้า</a>
+  </div>`;
+}
+function renderConfirm(items){
+  $('cfm').style.display = 'block';
+  $('cList').innerHTML = items.length ? items.map(cfmCard).join('') : '<div class="card"><p>ไม่มีรายการที่รอยืนยันเงินเข้า</p></div>';
+  for (const x of items){
+    const c = $('cList').querySelector(`[data-id="${CSS.escape(x.id)}"]`);
+    loadImg(c.querySelector('[data-k=chq]'), (x.photos || [])[0]);
+    loadImg(c.querySelector('[data-k=pay]'), ((x.batch || {}).payin || [])[0]);
+    const r = c.querySelector('[data-k=rcp]'); if (r) loadImg(r, x.receipt[0]);
+    c.querySelectorAll('img').forEach(i => i.addEventListener('click', () => i.classList.toggle('big')));
+    c.querySelector('.cOk').addEventListener('click', () => confirmSend(x, c));
+  }
+}
+async function confirmSend(x, c){
+  const b = c.querySelector('.cOk'), n = c.querySelector('.cN'), sess = load('cs_session'); if (!sess) return toLoginPage();
+  b.disabled = true; b.textContent = 'กำลังส่ง…'; n.innerHTML = '';
+  try {
+    const r = await fetch(WORKER + '/confirm', {method: 'POST', headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'application/json'},
+      body: JSON.stringify({no: x.no, ref: x.ref, stmt: c.querySelector('.cStmt').value.trim()})});
+    const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+    const d = await r.json().catch(() => ({}));
+    if (d.login){ store('cs_session', null); return toLoginPage(); }
+    if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    c.innerHTML = '<div style="font-size:18px;font-weight:700;color:var(--ok)">✅ ยืนยันเงินเข้าแล้ว · ' + esc(x.no) + '</div><p class="hint">ระบบเปลี่ยนสถานะเป็น "เงินเข้าแล้ว" และแจ้งกลุ่มให้ · ถ้าคุณเป็นคนนำฝากเอง ระบบจะปฏิเสธและแจ้งในแชท · ปิดหน้านี้กลับไป Lark ได้เลย</p>';
+  } catch(e){ b.disabled = false; b.textContent = '✅ เงินเข้าแล้ว'; n.innerHTML = '<div class="warn" style="margin-top:8px">❌ ส่งไม่สำเร็จ: ' + esc(e.message) + '</div>'; }
+}
+async function initConfirm(){
+  document.title = 'ยืนยันเงินเข้า'; $('h1').textContent = '💰 ยืนยันเงินเข้า (Treasury)';
+  document.querySelector('main > .card').style.display = 'none';   // ไม่ต้องถ่ายรูปในขั้นนี้
+  $('loginBtn').onclick = toLoginPage;
+  $('loginBox').querySelector('p').textContent = 'เข้าสู่ระบบ Lark ก่อน 1 ครั้ง เพื่อดูเช็คและใบ Pay-in ที่รอยืนยัน';
+  try {
+    if (!load('cs_session')){ $('loginBox').style.display = 'block'; return; }
+    await (listReady = loadList('confirm'));
+    if (!LIST){ $('loginBox').style.display = 'block'; return; }
+    const q = new URLSearchParams(location.search).get('q') || '';
+    const hit = q ? LIST.filter(x => x.ref === q || x.no === q.replace(/\D/g, '')) : [];
+    const items = hit.length ? hit : LIST;
+    if (q && !hit.length) $('cList').insertAdjacentHTML('beforebegin', '<div class="warn">รายการ ' + esc(q) + ' ไม่อยู่ในรายการรอยืนยันแล้ว (อาจยืนยันไปแล้ว) · ด้านล่างคือรายการที่ยังรออยู่ทั้งหมด</div>');
+    renderConfirm(items);
+  } catch(e){ $('cList').innerHTML = '<div class="warn">❌ ดึงรายการไม่สำเร็จ: ' + esc(e.message) + ' · รีเฟรชหน้า</div>'; $('cfm').style.display = 'block'; }
+}
+if (MODE === 'confirm') initConfirm();
 
 $('next').addEventListener('click', () => { $('done').style.display = 'none'; $('cam').value=''; $('pv').style.display='none'; $('st').textContent=''; window.scrollTo(0,0); $('cam').click(); });
 </script>
