@@ -412,19 +412,21 @@ let shot = null;
 $('cam').addEventListener('change', e => { const f = e.target.files[0]; if (f){ shot = f; run(URL.createObjectURL(f)); } });
 
 // ── AI อ่านรูป (Gemini ผ่านตัวกลาง · ต้องล็อกอิน) · ใช้ไม่ได้ → อ่านในเครื่องด้วย Tesseract เหมือนเดิม ──────────
-let NOAI = false, AI_USED = '';
+let NOAI = false, AI_USED = '', AI_ERR = '';
 async function aiRead(kind){
-  AI_USED = '';
-  const sess = load('cs_session'); if (NOAI || !sess || !WORKER) return null;
+  AI_USED = ''; AI_ERR = '';
+  const sess = load('cs_session'); if (NOAI || !WORKER) return null;
+  if (!sess){ AI_ERR = 'ยังไม่ได้ล็อกอิน Lark'; return null; }
   $('st').textContent = '🤖 AI กำลังอ่าน' + (kind === 'payin' ? 'ใบ Pay-in' : 'เช็ค') + '… (ประมาณ 5–15 วินาที)';
   try {
     const r = await wf(WORKER + '/extract', {method: 'POST', body: await photoBlob(), signal: AbortSignal.timeout(45000),
       headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Mode': kind}});
     const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
     const d = await r.json().catch(() => ({}));
-    if (!d.ok || !d.data) return null;
+    if (d.login){ AI_ERR = 'ต้องล็อกอิน Lark ใหม่'; return null; }
+    if (!d.ok || !d.data){ AI_ERR = d.error || ('HTTP ' + r.status); return null; }
     AI_USED = d.model; return d.data;
-  } catch(e){ return null; }
+  } catch(e){ AI_ERR = e.name === 'TimeoutError' ? 'AI ตอบช้าเกิน 45 วินาที' : (e.message || 'เชื่อมต่อไม่ได้'); return null; }
 }
 const isoOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && mkDate(d.slice(8, 10), d.slice(5, 7), d.slice(0, 4)) === d ? d : null;
 function fromAI(a){
@@ -434,10 +436,13 @@ function fromAI(a){
   amtSure = amt != null && c.amount !== 'low';
   let payer = a.payer ? findPayer(a.payer) : null;
   if (!payer && a.payer && !/ธนาคาร|bank/i.test(a.payer)) payer = {name: OTHER, other: a.payer};
-  return {no: no && no.length >= 6 && no.length <= 10 ? no : null, bank: BANKS[code] ? code : null, amt, date: isoOk(a.date), payer,
+  // วันที่: ใช้ตัวเลขตามที่เขียน (ววดดปปปป) แล้วแปลง พ.ศ. เอง · ถ้าไม่มีหรือไม่ใช่วันที่จริง ใช้ค่าที่ AI แปลงให้
+  const dr = String(a.date_raw || '').replace(/\D/g, '');
+  const date = (dr.length === 8 && mkDate(dr.slice(0, 2), dr.slice(2, 4), dr.slice(4))) || isoOk(a.date);
+  return {no: no && no.length >= 6 && no.length <= 10 ? no : null, bank: BANKS[code] ? code : null, amt, date, payer,
           toUs: a.payee ? payeeOk(a.payee) : true};
 }
-const aiTag = () => AI_USED ? '🤖 อ่านโดย AI · ตรวจกับตัวจริงอีกครั้ง' : '📱 อ่านในเครื่อง (AI ใช้ไม่ได้ตอนนี้) · ตรวจทุกช่อง';
+const aiTag = () => AI_USED ? '🤖 อ่านโดย AI (' + AI_USED + ') · ตรวจกับตัวจริงอีกครั้ง' : '📱 อ่านในเครื่อง' + (AI_ERR ? ' · AI ใช้ไม่ได้: ' + AI_ERR : '') + ' · ตรวจทุกช่อง';
 
 async function run(url){
   if (MODE === 'deposit') return runPayin(url);
