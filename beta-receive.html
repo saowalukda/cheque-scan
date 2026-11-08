@@ -140,7 +140,7 @@ a.btn{text-decoration:none;margin-top:8px}
   <button class="btn" id="dSend" style="margin-top:14px">🏦 ส่งนำฝาก</button>
   <div id="dN"></div>
   <button class="btn sec" id="dAgain" style="margin-top:8px">ถ่ายใบ Pay-in ใหม่</button>
-  <p class="hint" style="margin-top:12px">ถ่ายรูปไม่ได้? <a href="https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpEs17TR8qt1LaMU9FXzTpmb" target="_blank" rel="noopener">กรอกในฟอร์มนำฝากแทน</a></p>
+  <p class="hint" style="margin-top:12px">ถ่ายรูปไม่ได้? <a id="dForm" target="_blank" rel="noopener">กรอกในฟอร์มนำฝากแทน</a></p>
 </div>
 
 <div id="cfm" style="display:none">
@@ -156,7 +156,13 @@ a.btn{text-decoration:none;margin-top:8px}
 </main>
 
 <script>
-const FORM = "https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpWkaC5DNj54uJTvQwigYrhc";
+let ENV = 'dev';   // tools/build.py ตั้งเป็น 'dev' ในหน้า beta-*.html → ทุกอย่างไป Base Dev
+const SH = 'https://ujpzitc70et6.jp.larksuite.com/share/base/';
+const SHARES = {
+  prod: {send: 'shrjpWkaC5DNj54uJTvQwigYrhc', receive: 'shrjpqkai0wiq376769Og3rc0Oc', deposit: 'shrjpEs17TR8qt1LaMU9FXzTpmb', reject: 'shrjpVsQ0nejnDqDpsS6hWFhGYe', ret: 'shrjp5mML0gj9FMuwlGavRSHKKe'},
+  dev:  {send: 'shrjp2de7ArxqavdVbmarooAUoe', receive: 'shrjpjIgbnnKIe6y5CkQqmsscQh', deposit: 'shrjpLxlLtjB1dURtz7DSIp3X2b', reject: 'shrjpMkrs64y15BLGJXKloL75Ng', ret: 'shrjpVfIXemmTHYy9uNAInvHpyh'}};
+const FORMS = Object.fromEntries(Object.entries(SHARES[ENV]).map(([k, v]) => [k, SH + v]));
+const FORM = FORMS.send;
 // ชื่อคำถามในฟอร์ม (ทดสอบแล้ว: prefill ด้วยชื่อคำถามใช้ได้)
 const Q = {no:"เลขที่เช็ค", amt:"จำนวนเงิน (บาท)", bank:"ธนาคาร", payer:"ผู้สั่งจ่าย", other:"ระบุชื่อผู้สั่งจ่าย"};
 const OTHER = "อื่น ๆ (ระบุ)";
@@ -412,7 +418,7 @@ async function aiRead(kind){
   const sess = load('cs_session'); if (NOAI || !sess || !WORKER) return null;
   $('st').textContent = '🤖 AI กำลังอ่าน' + (kind === 'payin' ? 'ใบ Pay-in' : 'เช็ค') + '… (ประมาณ 5–15 วินาที)';
   try {
-    const r = await fetch(WORKER + '/extract', {method: 'POST', body: await photoBlob(), signal: AbortSignal.timeout(45000),
+    const r = await wf(WORKER + '/extract', {method: 'POST', body: await photoBlob(), signal: AbortSignal.timeout(45000),
       headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Mode': kind}});
     const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
     const d = await r.json().catch(() => ({}));
@@ -583,6 +589,10 @@ $('bank').addEventListener('change', () => { const on = $('bank').value === BANK
 // รูปส่งไปที่ Lark เท่านั้น (Worker ไม่เก็บรูป) · ล็อกอิน Lark ครั้งแรกครั้งเดียว
 let WORKER = "https://cheque-scan.ar-cheque.workers.dev";   // ใส่ URL ของ Worker เมื่อพร้อม · ว่าง = ใช้แบบเปิดฟอร์มเหมือนเดิม
 const BANK_OTHER = "ธนาคารอื่น ๆ (Other)";
+// ทุกการเรียกตัวกลางบอกว่าเป็น Prod หรือ Dev
+const wf = (u, o = {}) => fetch(u, {...o, headers: {...(o.headers || {}), 'X-Env': ENV}});
+$('dForm').href = FORMS.deposit;
+if (ENV === 'dev') document.querySelector('main').insertAdjacentHTML('afterbegin', '<div class="warn" style="background:#ede9fe;border-color:#8b5cf6;color:#4c1d95">🧪 <b>DEV</b> · ข้อมูลเข้า Base Dev และกลุ่ม 🧪 CC Dev · ไม่ใช่งานจริง</div>');
 const store = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch(e){} };
 const load = k => { try { return localStorage.getItem(k); } catch(e){ return null; } };
 function collect(){
@@ -612,7 +622,7 @@ async function send(){
   if (!sess) return toLogin(f, blob);
   $('send').disabled = true; $('send').textContent = 'กำลังส่ง…'; sendNote('');
   try {
-    const r = await fetch(WORKER + '/submit', {method: 'POST', body: blob,
+    const r = await wf(WORKER + '/submit', {method: 'POST', body: blob,
       headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Fields': encodeURIComponent(JSON.stringify(f))}});
     const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
     const d = await r.json().catch(() => ({}));
@@ -661,7 +671,7 @@ if (WORKER){
   $('who').innerHTML = 'เปิดฟอร์ม <b>ส่งเช็ค</b> ที่กรอกไว้ให้ · แนบรูปเช็คในฟอร์ม แล้วกดส่ง';
 }
 // ── ② รับเช็ค: เทียบรูปเช็คที่การเงินถ่ายกับข้อมูลที่ AR ส่งมา ─────────────────────
-const REJECT_FORM = "https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpVsQ0nejnDqDpsS6hWFhGYe";
+const REJECT_FORM = FORMS.reject;
 let LIST = null, READ = null, listReady = Promise.resolve(), PIN = null;   // PIN = เช็คที่เปิดมาจากแจ้งเตือน
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const bkkDate = ms => ms ? new Date(+ms + 7*3600e3).toISOString().slice(0,10) : '';
@@ -670,7 +680,7 @@ const shortBank = b => (String(b).match(/\(([^)]+)\)\s*$/) || [,''])[1] || b;
 async function loadList(stage){
   const sess = load('cs_session');
   if (!sess){ LIST = null; return null; }
-  const r = await fetch(WORKER + '/list', {method: 'POST', headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'application/json'}, body: JSON.stringify({stage})});
+  const r = await wf(WORKER + '/list', {method: 'POST', headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'application/json'}, body: JSON.stringify({stage})});
   const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
   const d = await r.json().catch(() => ({}));
   if (d.login){ store('cs_session', null); LIST = null; return null; }
@@ -747,7 +757,7 @@ async function receiveSend(){
   const sess = load('cs_session'); if (!sess) return toLoginPage();
   $('rSend').disabled = true; $('rSend').textContent = 'กำลังส่ง…'; $('rN').innerHTML = '';
   try {
-    const r = await fetch(WORKER + '/receive', {method: 'POST', body: await photoBlob(),
+    const r = await wf(WORKER + '/receive', {method: 'POST', body: await photoBlob(),
       headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Fields': encodeURIComponent(JSON.stringify({no: it.no, ref: it.ref}))}});
     const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
     const d = await r.json().catch(() => ({}));
@@ -786,7 +796,7 @@ async function initReceive(){
         : `<div class="warn">เช็คเลขที่ ${esc(qno)} ไม่อยู่ในรายการรอรับแล้ว (อาจรับไปแล้ว ถูกตีกลับ หรือยกเลิก) · ถ่ายเช็คที่ได้รับเพื่อหาจากรายการทั้งหมดได้</div>`;
     }
     const fq = new URLSearchParams(PIN ? {'prefill_เลขที่เช็ค': PIN.no} : {});
-    $('rForm').href = 'https://ujpzitc70et6.jp.larksuite.com/share/base/shrjpqkai0wiq376769Og3rc0Oc' + (PIN ? '?' + fq.toString().replace(/\+/g, '%20') : '');
+    $('rForm').href = FORMS.receive + (PIN ? '?' + fq.toString().replace(/\+/g, '%20') : '');
   } catch(e){ $('st').textContent = '❌ ดึงรายการไม่สำเร็จ: ' + e.message + ' · รีเฟรชหน้า'; }
 }
 $('rPick').addEventListener('change', renderCmp);
@@ -1000,7 +1010,7 @@ async function depSend(){
   const sess = load('cs_session'); if (!sess) return toLoginPage();
   $('dSend').disabled = true; $('dSend').textContent = 'กำลังส่ง…'; $('dN').innerHTML = '';
   try {
-    const r = await fetch(WORKER + '/deposit', {method: 'POST', body: await photoBlob(),
+    const r = await wf(WORKER + '/deposit', {method: 'POST', body: await photoBlob(),
       headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Fields': encodeURIComponent(JSON.stringify(f))}});
     const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
     const d = await r.json().catch(() => ({}));
@@ -1042,13 +1052,13 @@ $('dAgain').addEventListener('click', () => { $('cam').value=''; $('cam').click(
 if (MODE === 'deposit') initDeposit();
 
 // ── ④ ยืนยันเงินเข้า (Treasury): ดูรูปเช็ค + ใบ Pay-in + ข้อมูลที่จับคู่กัน เทียบกับรายการธนาคาร แล้วยืนยัน ──────────
-const RETURN_FORM = "https://ujpzitc70et6.jp.larksuite.com/share/base/shrjp5mML0gj9FMuwlGavRSHKKe";
+const RETURN_FORM = FORMS.ret;
 const imgCache = {};
 async function loadImg(el, f){
   if (!f){ el.outerHTML = '<div class="no">ไม่มีรูป</div>'; return; }
   try {
     if (!imgCache[f.t]){
-      const r = await fetch(WORKER + '/file', {method: 'POST', headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'application/json'}, body: JSON.stringify(f)});
+      const r = await wf(WORKER + '/file', {method: 'POST', headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'application/json'}, body: JSON.stringify(f)});
       if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
       imgCache[f.t] = URL.createObjectURL(await r.blob());
     }
@@ -1096,7 +1106,7 @@ async function confirmSend(x, c){
   const b = c.querySelector('.cOk'), n = c.querySelector('.cN'), sess = load('cs_session'); if (!sess) return toLoginPage();
   b.disabled = true; b.textContent = 'กำลังส่ง…'; n.innerHTML = '';
   try {
-    const r = await fetch(WORKER + '/confirm', {method: 'POST', headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'application/json'},
+    const r = await wf(WORKER + '/confirm', {method: 'POST', headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'application/json'},
       body: JSON.stringify({no: x.no, ref: x.ref, stmt: c.querySelector('.cStmt').value.trim()})});
     const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
     const d = await r.json().catch(() => ({}));
