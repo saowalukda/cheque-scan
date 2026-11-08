@@ -442,7 +442,9 @@ function fromAI(a){
   return {no: no && no.length >= 6 && no.length <= 10 ? no : null, bank: BANKS[code] ? code : null, amt, date, payer,
           toUs: a.payee ? payeeOk(a.payee) : true};
 }
-const aiTag = () => AI_USED ? '🤖 อ่านโดย AI (' + AI_USED + ') · ตรวจกับตัวจริงอีกครั้ง' : '📱 อ่านในเครื่อง' + (AI_ERR ? ' · AI ใช้ไม่ได้: ' + AI_ERR : '') + ' · ตรวจทุกช่อง';
+// ชื่อตัวอ่านที่ผู้ใช้เห็น (ลำดับ: Gemini → Typhoon → Tesseract ในเครื่อง)
+const AI_NAMES = {'gemini-3.5-flash': 'Gemini 3.5 Flash', 'gemini-flash-latest': 'Gemini Flash', 'gemini-3.5-flash-lite': 'Gemini Flash-Lite', 'typhoon-ocr-v2': 'Typhoon OCR (SCB 10X)'};
+const aiTag = () => AI_USED ? '🤖 อ่านโดย ' + (AI_NAMES[AI_USED] || AI_USED) + ' · ตรวจกับตัวจริงอีกครั้ง' : '📱 อ่านในเครื่อง (Tesseract)' + (AI_ERR ? ' · AI ใช้ไม่ได้: ' + AI_ERR : '') + ' · ตรวจทุกช่อง';
 
 async function run(url){
   if (MODE === 'deposit') return runPayin(url);
