@@ -159,7 +159,7 @@ a.btn{text-decoration:none;margin-top:8px}
 let ENV = 'dev';   // tools/build.py ตั้งเป็น 'dev' ในหน้า beta-*.html → ทุกอย่างไป Base Dev
 const SH = 'https://ujpzitc70et6.jp.larksuite.com/share/base/';
 const SHARES = {
-  prod: {send: 'shrjpWkaC5DNj54uJTvQwigYrhc', receive: 'shrjpqkai0wiq376769Og3rc0Oc', deposit: 'shrjpEs17TR8qt1LaMU9FXzTpmb', reject: 'shrjpVsQ0nejnDqDpsS6hWFhGYe', ret: 'shrjp5mML0gj9FMuwlGavRSHKKe'},
+  prod: {send: 'shrjp6g61h7CZF2e2UDsTKzDwAg', receive: 'shrjpwYxMAQCI7Xe1gMFYhScXYc', deposit: 'shrjpmiIoJTxsTFi0x6cHfQHwVe', reject: 'shrjp4QheY69rQIuGrJh1KxmAHf', ret: 'shrjpIuSiIbJ3R5pdIci5IDmyge'},
   dev:  {send: 'shrjp2de7ArxqavdVbmarooAUoe', receive: 'shrjpjIgbnnKIe6y5CkQqmsscQh', deposit: 'shrjpLxlLtjB1dURtz7DSIp3X2b', reject: 'shrjpMkrs64y15BLGJXKloL75Ng', ret: 'shrjpVfIXemmTHYy9uNAInvHpyh'}};
 const FORMS = Object.fromEntries(Object.entries(SHARES[ENV]).map(([k, v]) => [k, SH + v]));
 const FORM = FORMS.send;
@@ -419,14 +419,14 @@ async function aiRead(kind){
   if (!sess){ AI_ERR = 'ยังไม่ได้ล็อกอิน Lark'; return null; }
   $('st').textContent = '🤖 AI กำลังอ่าน' + (kind === 'payin' ? 'ใบ Pay-in' : 'เช็ค') + '… (ประมาณ 5–15 วินาที)';
   try {
-    const r = await wf(WORKER + '/extract', {method: 'POST', body: await photoBlob(), signal: AbortSignal.timeout(45000),
+    const r = await wf(WORKER + '/extract', {method: 'POST', body: await photoBlob(), signal: AbortSignal.timeout(70000),
       headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Mode': kind}});
     const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
     const d = await r.json().catch(() => ({}));
     if (d.login){ AI_ERR = 'ต้องล็อกอิน Lark ใหม่'; return null; }
     if (!d.ok || !d.data){ AI_ERR = d.error || ('HTTP ' + r.status); return null; }
     AI_USED = d.model; return d.data;
-  } catch(e){ AI_ERR = e.name === 'TimeoutError' ? 'AI ตอบช้าเกิน 45 วินาที' : (e.message || 'เชื่อมต่อไม่ได้'); return null; }
+  } catch(e){ AI_ERR = e.name === 'TimeoutError' ? 'AI ตอบช้าเกิน 70 วินาที' : (e.message || 'เชื่อมต่อไม่ได้'); return null; }
 }
 const isoOk = d => /^\d{4}-\d{2}-\d{2}$/.test(d || '') && mkDate(d.slice(8, 10), d.slice(5, 7), d.slice(0, 4)) === d ? d : null;
 function fromAI(a){
