@@ -762,7 +762,7 @@ function renderCmp(){
   $('rBanner').innerHTML = W.join('');
   const needOk = bad.length > 0 || na.length === rows.length;
   $('rOkBox').hidden = !needOk; $('rSend').disabled = needOk;
-  const q = new URLSearchParams({'prefill_เลขที่เช็คที่จะตีกลับ': it.no, 'prefill_เหตุผล': 'ข้อมูลไม่ตรงกับเช็คจริง'});
+  const q = new URLSearchParams({'prefill_เลขที่เช็คที่จะตีกลับ': it.ref || it.no, 'prefill_เหตุผล': 'ข้อมูลไม่ตรงกับเช็คจริง'});
   $('rRej').href = REJECT_FORM + '?' + q.toString().replace(/\+/g, '%20'); $('rRej').style.display = 'block';
   $('rRej').className = bad.length ? 'btn' : 'btn sec';
 }
@@ -1091,7 +1091,7 @@ function cfmCard(x){
     ['ยอดตามใบ Pay-in', fmt(b.total || 0) + ' บาท ' + (same ? '<span class="r-ok">✅ ตรงกับยอดเช็ค</span>' : '<span class="r-bad">❌ ไม่ตรง (ต่าง ' + fmt((b.total || 0) - x.amt) + ')</span>')],
     ['ฝากเข้าบัญชี', esc(b.acct || '—')], ['วันที่นำฝาก', dmy(b.date)], ['รอบนำฝาก', esc(b.no || '—')],
     ['ส่ง / รับ / ฝาก', esc([x.by, x.recvBy, b.by].map(v => v || '—').join(' / '))], ['เลขอ้างอิง', esc(x.ref)]];
-  const q = new URLSearchParams({'prefill_เลขที่เช็คที่ถูกคืน': x.no});
+  const q = new URLSearchParams({'prefill_เลขที่เช็คที่ถูกคืน': x.ref || x.no});
   return `<div class="card" data-id="${esc(x.id)}">
     <div style="font-weight:700;font-size:17px">🏦 ${esc(x.no)} · ${fmt(x.amt)} บาท</div>
     <div class="ph">
