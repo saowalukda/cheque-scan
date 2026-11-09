@@ -1090,9 +1090,9 @@ function cfmCard(x){
     </div>
     <table class="cmp">${rows.map(r => `<tr><td style="width:38%">${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>
     <p class="hint" style="margin-top:10px">เทียบกับรายการเงินเข้าในระบบธนาคาร (ยอด · วันที่ · บัญชี) แล้วค่อยกดยืนยัน</p>
-    ${self ? '<div class="warn">คุณเป็นคนนำฝากรายการนี้ ยืนยันเองไม่ได้ · ให้ Treasury อีกคนยืนยัน</div>' : ''}
+    ${self ? '<div class="warn">คุณเป็นคนนำฝากรายการนี้ · ยืนยันเองได้เฉพาะ Admin · ถ้าไม่ใช่ Admin ระบบจะปฏิเสธ ให้ Treasury อีกคนยืนยัน</div>' : ''}
     <label>อ้างอิง Statement (ไม่บังคับ)</label><input class="cStmt" autocomplete="off" placeholder="เช่น เลขรายการในระบบธนาคาร">
-    <button class="btn cOk" style="margin-top:12px"${self ? ' disabled' : ''}>✅ เงินเข้าแล้ว</button>
+    <button class="btn cOk" style="margin-top:12px">✅ เงินเข้าแล้ว</button>
     <div class="cN"></div>
     <a class="btn sec" target="_blank" rel="noopener" href="${RETURN_FORM}?${q.toString().replace(/\+/g, '%20')}">🔴 เช็คคืน / เงินไม่เข้า</a>
   </div>`;
@@ -1119,7 +1119,7 @@ async function confirmSend(x, c){
     const d = await r.json().catch(() => ({}));
     if (d.login){ store('cs_session', null); return toLoginPage(); }
     if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
-    c.innerHTML = '<div style="font-size:18px;font-weight:700;color:var(--ok)">✅ ยืนยันเงินเข้าแล้ว · ' + esc(x.no) + '</div><p class="hint">ระบบเปลี่ยนสถานะเป็น "เงินเข้าแล้ว" และแจ้งกลุ่มให้ · ถ้าคุณเป็นคนนำฝากเอง ระบบจะปฏิเสธและแจ้งในแชท · ปิดหน้านี้กลับไป Lark ได้เลย</p>';
+    c.innerHTML = '<div style="font-size:18px;font-weight:700;color:var(--ok)">✅ ยืนยันเงินเข้าแล้ว · ' + esc(x.no) + '</div><p class="hint">ระบบเปลี่ยนสถานะเป็น "เงินเข้าแล้ว" และแจ้งกลุ่มให้ · ถ้าคุณเป็นคนนำฝากเองและไม่ใช่ Admin ระบบจะปฏิเสธและแจ้งในแชท · ปิดหน้านี้กลับไป Lark ได้เลย</p>';
   } catch(e){ b.disabled = false; b.textContent = '✅ เงินเข้าแล้ว'; n.innerHTML = '<div class="warn" style="margin-top:8px">❌ ส่งไม่สำเร็จ: ' + esc(e.message) + '</div>'; }
 }
 async function initConfirm(){
