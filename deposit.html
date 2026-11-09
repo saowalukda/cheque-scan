@@ -444,6 +444,10 @@ function fromAI(a){
 }
 // ชื่อตัวอ่านที่ผู้ใช้เห็น (ลำดับ: Gemini → Typhoon → Tesseract ในเครื่อง)
 const AI_NAMES = {'gemini-3.5-flash': 'Gemini 3.5 Flash', 'gemini-flash-latest': 'Gemini Flash', 'gemini-3.5-flash-lite': 'Gemini Flash-Lite', 'typhoon-ocr-v2': 'Typhoon OCR (SCB 10X)'};
+const readerName = () => AI_USED ? (AI_NAMES[AI_USED] || AI_USED) : 'Tesseract (อ่านในเครื่อง)';
+let INIT = {};   // ค่าที่ตัวอ่านกรอกให้ (ไว้เทียบว่าคนแก้ช่องไหนเอง)
+const edited = (now, labels) => Object.keys(labels).filter(k => (INIT[k] ?? '') !== (now[k] ?? '')).map(k => labels[k]);
+const readerNote = (now, labels) => { const e = edited(now, labels); return readerName() + (e.length ? ' · คนแก้: ' + e.join(', ') : ' · ไม่ได้แก้'); };
 const aiTag = () => AI_USED ? '🤖 อ่านโดย ' + (AI_NAMES[AI_USED] || AI_USED) + ' · ตรวจกับตัวจริงอีกครั้ง' : '📱 อ่านในเครื่อง (Tesseract)' + (AI_ERR ? ' · AI ใช้ไม่ได้: ' + AI_ERR : '') + ' · ตรวจทุกช่อง';
 
 async function run(url){
@@ -574,6 +578,7 @@ function show(no, amt, bank, payer, toUs, date){
   $('warns').innerHTML = W.map(w => '<div class="warn">'+w+'</div>').join('');
 
   $('st').textContent = 'อ่านเสร็จ';
+  INIT = {no: $('no').value, amt: $('amt').value, bank: $('bank').value, dt: $('dt').value, payer: $('payer').value};
   $('review').style.display = 'block'; $('review').scrollIntoView({behavior:'smooth'});
 }
 
@@ -605,7 +610,9 @@ const load = k => { try { return localStorage.getItem(k); } catch(e){ return nul
 function collect(){
   const f = {no: $('no').value.replace(/\D/g,''), amt: +$('amt').value.replace(/[^\d.]/g,''), bank: $('bank').value,
     bankOther: $('bankOther').value.trim(), payer: $('payer').value, payerOther: $('other').value.trim(),
-    date: $('dt').value, what: $('what').value.trim(), ref: $('ref').value.trim()};
+    date: $('dt').value, what: $('what').value.trim(), ref: $('ref').value.trim(),
+    reader: readerNote({no: $('no').value, amt: $('amt').value, bank: $('bank').value, dt: $('dt').value, payer: $('payer').value},
+                       {no: 'เลขที่เช็ค', amt: 'ยอด', bank: 'ธนาคาร', dt: 'วันที่', payer: 'ผู้สั่งจ่าย'})};
   const miss = [];
   if (f.no.length < 6 || f.no.length > 10) miss.push(['no','เลขที่เช็ค (6–10 หลัก)']);
   if (!(f.amt > 0)) miss.push(['amt','จำนวนเงิน']);
@@ -765,7 +772,8 @@ async function receiveSend(){
   $('rSend').disabled = true; $('rSend').textContent = 'กำลังส่ง…'; $('rN').innerHTML = '';
   try {
     const r = await wf(WORKER + '/receive', {method: 'POST', body: await photoBlob(),
-      headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Fields': encodeURIComponent(JSON.stringify({no: it.no, ref: it.ref}))}});
+      headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'image/jpeg', 'X-Fields': encodeURIComponent(JSON.stringify({no: it.no, ref: it.ref,
+        reader: readerName() + ' · ' + ($('rOkBox').hidden ? 'ตรงกับที่ AR ส่ง' : 'ไม่ตรง แต่คนรับยืนยันว่าข้อมูล AR ถูก')}))}});
     const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
     const d = await r.json().catch(() => ({}));
     if (d.login){ store('cs_session', null); return toLoginPage(); }
@@ -1002,11 +1010,14 @@ function showPayin(cands, acct, date){
     : '<div class="warn">⚠️ <b>ไม่พบเลขที่เช็คที่รอนำฝากในใบ Pay-in</b><br>ถ่ายใหม่ให้เห็นช่องเลขที่เช็คชัด หรือเลือกเช็คในใบเอง</div>';
   depCheck();
   $('st').textContent = 'อ่านเสร็จ';
+  INIT = {acct: $('dAcct').value, total: $('dTotal').value, date: $('dDate').value, pick: (document.querySelector('#dList input:checked') || {}).value || ''};
   $('dep').scrollIntoView({behavior: 'smooth'});
 }
 async function depSend(){
   const ids = [...document.querySelectorAll('#dList input:checked')].map(b => b.value), items = ids.map(id => LIST.find(x => x.id === id));
-  const f = {acct: $('dAcct').value, nos: items.map(x => x.no), ref: items.length === 1 ? items[0].ref : '', total: +$('dTotal').value.replace(/[^\d.]/g, ''), date: $('dDate').value};
+  const f = {reader: readerNote({acct: $('dAcct').value, total: $('dTotal').value, date: $('dDate').value, pick: ids[0] || ''},
+                                {acct: 'บัญชีที่ฝาก', total: 'ยอดตามใบ Pay-in', date: 'วันที่นำฝาก', pick: 'เช็คที่เลือก'}),
+             acct: $('dAcct').value, nos: items.map(x => x.no), ref: items.length === 1 ? items[0].ref : '', total: +$('dTotal').value.replace(/[^\d.]/g, ''), date: $('dDate').value};
   const miss = [];
   if (items.length !== 1) miss.push(['dList', 'เลือกเช็ค 1 ใบ']);
   if (!f.acct) miss.push(['dAcct', 'ธนาคารที่นำฝาก']);
