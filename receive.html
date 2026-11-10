@@ -50,7 +50,11 @@ a.btn{text-decoration:none;margin-top:8px}
 <div class="card">
   <div class="step">ขั้นที่ 1</div>
   <div id="target" hidden></div>
-  <div id="aiHint" class="hint" hidden style="margin-bottom:10px">🤖 <a href="#" id="aiLogin">ล็อกอิน Lark ครั้งแรก</a> เพื่อให้ AI ช่วยอ่านเช็ค (แม่นกว่า) · ไม่ล็อกอินก็ใช้ได้ ระบบอ่านในเครื่องแทน</div>
+  <div id="aiHint" hidden style="margin-bottom:12px;padding:12px;border:2px solid #f0b400;border-radius:10px;background:#fff8e1">
+    <div style="font-weight:600;margin-bottom:8px">🤖 ล็อกอิน Lark ก่อน ให้ AI ช่วยอ่านเช็ค (แม่นกว่า)</div>
+    <a href="#" id="aiLogin" class="btn" style="margin-top:0">🔑 ล็อกอิน Lark ให้ AI อ่าน</a>
+    <p class="hint" style="margin:8px 0 0">ล็อกอินครั้งเดียว ระบบพากลับมาหน้านี้เอง · ไม่ล็อกอินก็ถ่ายได้ แต่ระบบจะอ่านในเครื่อง (แม่นน้อยกว่า)</p>
+  </div>
   <label for="cam" class="btn">ถ่ายรูป / เลือกรูปเช็ค</label>
   <input id="cam" type="file" accept="image/*" hidden>
   <p class="hint" id="camHint">วางเช็คบนโต๊ะ ถ่ายตรง ๆ ให้<b>เช็คเต็มจอ</b> เห็นแถบตัวเลขด้านล่างชัด · ถ่ายเช็คตัวจริง ไม่ถ่ายจากหน้าจอ</p>
@@ -819,7 +823,7 @@ $('rOk').addEventListener('change', () => { $('rSend').disabled = !$('rOk').chec
 $('rSend').addEventListener('click', receiveSend);
 $('rAgain').addEventListener('click', () => { $('cam').value=''; $('cam').click(); });
 if (MODE === 'receive') initReceive();
-if (MODE === 'send' && WORKER && !load('cs_session')) { $('aiHint').hidden = false; $('aiLogin').onclick = e => { e.preventDefault(); toLoginPage(); }; }
+if (MODE === 'send' && WORKER && !load('cs_session')) { $('aiHint').hidden = false; document.querySelector('label[for=cam]').classList.add('sec'); $('aiLogin').onclick = e => { e.preventDefault(); toLoginPage(); }; }
 
 // ── ③ นำฝาก: อ่านใบ Pay-in แล้วจับคู่กับเช็คที่รอนำฝาก (เทียบกับรายการ ไม่เดาเลขเอง) ──────────
 const ACCOUNTS = [
