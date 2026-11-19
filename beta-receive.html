@@ -36,6 +36,8 @@ table.cmp th{font-size:13px;color:var(--mute);font-weight:600}
 .brow .bs{font-size:14px}.brow .bdel{background:none;border:0;font-size:18px;color:#98a2b3;cursor:pointer;padding:0 4px}
 .brow.done{background:#ecfdf3}.brow.fail{background:#fef3f2}
 body.batch main>.card:first-of-type{display:none!important}
+body.batch #dep{display:none!important}
+.brow .dg{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.brow .dg input,.brow .dg select{margin:0;padding:6px;font-size:14px;flex:1 1 120px;min-width:0}
 .r-ok{color:var(--ok);font-weight:600}.r-bad{color:#b42318;font-weight:700}.r-na{color:var(--mute)}
 a.btn{text-decoration:none;margin-top:8px}
 .drow{display:flex;gap:10px;align-items:flex-start;padding:9px 4px;border-bottom:1px solid var(--line);font-size:15px;font-weight:400;margin:0}
@@ -169,6 +171,18 @@ a.btn{text-decoration:none;margin-top:8px}
   <div id="dN"></div>
   <button class="btn sec" id="dAgain" style="margin-top:8px">ถ่ายใบ Pay-in ใหม่</button>
   <p class="hint" style="margin-top:12px">ถ่ายรูปไม่ได้? <a id="dForm" target="_blank" rel="noopener">กรอกในฟอร์มนำฝากแทน</a></p>
+</div>
+
+<div class="card" id="dbat" style="display:none">
+  <div class="step">ขั้นที่ 1 · ถ่ายใบ Pay-in (หลายใบได้ ไม่ต้องเรียง)</div>
+  <label for="dcam" class="btn">📷 ถ่ายใบ Pay-in / เลือกรูป</label>
+  <input id="dcam" type="file" accept="image/*" multiple hidden>
+  <p class="hint">ใบ Pay-in 1 ใบ ต่อเช็ค 1 ใบ · ระบบหาเช็คที่อยู่ในแต่ละใบ และกรอกยอด ธนาคาร วันที่ให้เอง · ตรวจแล้วกดส่งครั้งเดียว</p>
+  <div id="dbSum"></div>
+  <div id="dbList"></div>
+  <button class="btn" id="dbSend" style="margin-top:12px" disabled>🏦 ส่งนำฝาก</button>
+  <div id="dbN"></div>
+  <p class="hint" style="margin-top:12px">ถ่ายรูปไม่ได้? <a id="dbForm" target="_blank" rel="noopener">กรอกในฟอร์มนำฝากแทน</a></p>
 </div>
 
 <div id="cfm" style="display:none">
@@ -1162,6 +1176,7 @@ async function runPayin(url){
     $('st').textContent = 'อ่านใบ Pay-in ไม่สำเร็จ · ติ๊กเช็คและกรอกยอดเองด้านล่าง';
   }
   $('bar').style.display = 'none';
+  if (DCB) return DCB();
 }
 const depState = () => ({foundAll: Object.keys(FOUND_ALL).length, ticked: [...document.querySelectorAll('#dList input:checked')].map(i => (LIST.find(x => x.id === i.value) || {}).no),
   found: Object.keys(FOUND).length, total: $('dTotal').value, totalN: $('dTotalN').textContent, acct: $('dAcct').value, acctN: $('dAcctN').textContent,
@@ -1254,6 +1269,105 @@ async function depSend(){
   } finally { $('dSend').textContent = '🏦 ส่งนำฝาก'; if ($('dep').style.display !== 'none') depCheck();
   }
 }
+// ── ③ ถ่ายรวด: ถ่ายใบ Pay-in หลายใบ ไม่ต้องเรียง → อ่านทีละใบ (ตัวอ่านเดิม) → จับคู่เช็ค 1 ใบต่อใบ → ส่งครั้งเดียว ──
+let DCB = null, DQ = [], dBusy = false, dSeq = 0;
+const dNum = v => +String(v || '').replace(/[^\d.]/g, '');
+function dAdd(srcs){
+  for (const s of srcs) DQ.push({k: ++dSeq, url: typeof s === 'string' ? s : URL.createObjectURL(s), st: 'wait'});
+  dRender(); dPump();
+}
+async function dPump(){
+  if (dBusy) return; dBusy = true; dRender();
+  let it;
+  while ((it = DQ.find(x => x.st === 'wait'))){
+    it.st = 'read'; dRender();
+    const v = await new Promise(res => { DCB = () => res({pick: (document.querySelector('#dList input:checked') || {}).value || '', all: Object.keys(FOUND_ALL),
+      tot: [...PAYIN_TOT], total: $('dTotal').value, acct: $('dAcct').value, date: $('dDate').value, reader: readerName()}); run(it.url); });
+    DCB = null; it.read = v; it.blob = await photoBlob(); it.acct = v.acct; it.date = v.date; it.st = 'ready'; dMatch(it); dRender();
+  }
+  dBusy = false; $('st').textContent = ''; dRender();
+}
+// เช็คที่ตัวอ่านเลือกให้ ถ้าถูกใบ Pay-in อื่นใช้ไปแล้ว → หาใบอื่นในใบนี้ที่ยอดตรง
+function dMatch(it){
+  const used = new Set(DQ.filter(x => x !== it && x.item && x.st !== 'done').map(x => x.item.id)), L = (LIST || []).filter(x => !used.has(x.id));
+  const R = it.read, eq = (a, b) => Math.abs(a - b) < 0.005;
+  let x = L.find(y => y.id === R.pick) || null;
+  if (!x){ const c = L.filter(y => R.all.includes(y.id)); x = c.length === 1 ? c[0] : c.find(y => R.tot.some(v => eq(v, y.amt))) || null; }
+  it.item = x;
+  it.total = x && R.tot.length ? fmt(R.tot.find(v => eq(v, x.amt)) ?? Math.max(...R.tot)) : R.total || '';
+}
+const dOk = it => !!it.item && dNum(it.total) > 0 && Math.abs(dNum(it.total) - it.item.amt) < 0.005;
+const dReady = it => it.st === 'ready' && !!it.item && !!it.acct && dNum(it.total) > 0 && !!it.date;
+function dRender(){
+  if (MODE !== 'deposit') return;
+  const used = new Set(DQ.filter(x => x.item && x.st !== 'done').map(x => x.item.id));
+  $('dbList').innerHTML = DQ.map((it, i) => {
+    const x = it.item, R = it.read || {};
+    let st, form = '';
+    if (it.st === 'wait') st = '<span class="r-na">⏳ รอคิวอ่าน</span>';
+    else if (it.st === 'read') st = '<span class="r-na">🤖 กำลังอ่าน…</span>';
+    else if (it.st === 'send') st = '<span class="r-na">กำลังส่ง…</span>';
+    else if (it.st === 'done') st = '<span class="r-ok">✅ นำฝากแล้ว · ' + esc(x.no) + ' · ใบ Pay-in ' + esc(it.total) + ' บาท</span>';
+    else {
+      st = it.st === 'fail' ? '<span class="r-bad">❌ ส่งไม่สำเร็จ: ' + esc(it.err) + '</span> · กด "ส่งนำฝาก" อีกครั้ง<br>' : '';
+      const twin = !x && R.all ? DQ.findIndex(y => y !== it && y.item && R.all.includes(y.item.id)) : -1;
+      st += !x ? (twin >= 0 ? '<span class="r-bad">⚠️ เช็คในใบนี้ ถูกใช้กับใบ Pay-in ที่ ' + (twin + 1) + ' แล้ว</span><br><span class="hint">ถ่ายใบเดิมซ้ำหรือเปล่า? ถ้าซ้ำ กด ✕ เอาออก</span>'
+        : '<span class="r-bad">❓ ไม่พบเช็คที่รอนำฝากในใบนี้</span><br><span class="hint">เลือกเช็คเองด้านบน · หรือถ่ายใหม่ให้เห็นช่องเลขที่เช็คชัด</span>')
+        : (R.all && R.all.length > 1 ? '<span class="r-bad">⚠️ ใบนี้มีเลขที่เช็คหลายใบ</span> <span class="hint">(กฎ: 1 ใบ Pay-in ต่อเช็ค 1 ใบ · ตรวจว่าถ่ายถูกใบ)</span><br>' : '') +
+          (dOk(it) ? '<span class="r-ok">✅ ยอดในใบตรงกับเช็ค</span>' : dNum(it.total) > 0 ? '<span class="r-bad">⚠️ ยอดไม่ตรง</span> <span class="hint">เช็ค ' + fmt(x.amt) + ' · ใบ Pay-in ' + esc(it.total) + ' · ตรวจยอดในใบ ถ้าต่างจริง ส่งได้ ระบบจะแจ้งให้อธิบาย</span>' : '<span class="r-bad">⚠️ อ่านยอดในใบไม่ได้</span> · พิมพ์ยอดตามใบ Pay-in');
+      form = `<div class="hint" style="margin-top:6px">ยอดตามใบ Pay-in · บัญชีที่ฝาก · วันที่ฝาก</div><div class="dg"><input data-dv="${it.k}" data-f="total" value="${esc(it.total)}" inputmode="decimal" placeholder="ยอดตามใบ Pay-in" aria-label="ยอดตามใบ Pay-in (บาท)">` +
+        `<select data-dv="${it.k}" data-f="acct" aria-label="ธนาคารที่นำฝาก"><option value="">— ธนาคารที่ฝาก —</option>${ACCOUNTS.map(a => `<option ${a[0] === it.acct ? 'selected' : ''}>${esc(a[0])}</option>`).join('')}</select>` +
+        `<input data-dv="${it.k}" data-f="date" type="date" value="${esc(it.date)}" aria-label="วันที่นำฝาก"></div>`;
+    }
+    const pick = (it.st === 'ready' || it.st === 'fail') ? `<select data-dpick="${it.k}"><option value="">— เลือกเช็คในใบนี้ —</option>` +
+      (LIST || []).filter(y => y === x || !used.has(y.id)).map(y => `<option value="${esc(y.id)}" ${y === x ? 'selected' : ''}>${esc(y.no)} · ${fmt(y.amt)} บาท · ${esc(shortBank(y.bank))}</option>`).join('') + '</select>'
+      : x ? `<div style="font-weight:600">${esc(x.no)} · ${fmt(x.amt)} บาท</div>` : '';
+    return `<div class="brow ${it.st}"><img src="${esc(it.url)}" alt="ใบ Pay-in ที่ ${i + 1}" data-dzoom="${it.k}"><div class="bx"><div class="hint">ใบ Pay-in ที่ ${i + 1}</div>${pick}<div class="bs">${st}</div>${form}</div>` +
+      (it.st === 'done' || it.st === 'send' ? '' : `<button class="bdel" data-ddel="${it.k}" title="เอารูปนี้ออก">✕</button>`) + '</div>';
+  }).join('');
+  const ready = DQ.filter(dReady).length, done = DQ.filter(x => x.st === 'done').length, chk = DQ.filter(x => x.st === 'ready' && !dReady(x)).length, bad = DQ.filter(x => dReady(x) && !dOk(x)).length;
+  $('dbSum').innerHTML = DQ.length ? `<div class="hint" style="margin-top:8px">${DQ.length} ใบ · พร้อมส่ง ${ready}${bad ? ' (ยอดไม่ตรง ' + bad + ')' : ''} · ต้องตรวจ ${chk}${done ? ' · ส่งแล้ว ' + done : ''}${dBusy ? ' · กำลังอ่าน…' : ''} · เหลือรอนำฝากในระบบ ${(LIST || []).length} ใบ</div>` : '';
+  $('dbSend').disabled = dBusy || !ready;
+  $('dbSend').textContent = dBusy ? 'รออ่านให้ครบก่อน…' : ready ? `🏦 ส่งนำฝาก ${ready} ใบ` : '🏦 ส่งนำฝาก';
+}
+async function dSendAll(){
+  if (!load('cs_session')) return toLoginPage();
+  const go = DQ.filter(dReady); $('dbN').innerHTML = '';
+  for (const it of go){
+    it.st = 'send'; dRender();
+    try {
+      const R = it.read, ed = [[it.item.id !== R.pick, 'เช็คที่เลือก'], [it.total !== R.total, 'ยอดตามใบ Pay-in'], [it.acct !== R.acct, 'บัญชีที่ฝาก'], [it.date !== R.date, 'วันที่นำฝาก']].filter(e => e[0]).map(e => e[1]);
+      const f = {reader: R.reader + ' · ถ่ายรวด · ' + (ed.length ? 'คนแก้: ' + ed.join(', ') : 'ไม่ได้แก้'), acct: it.acct, nos: [it.item.no], ref: it.item.ref, total: dNum(it.total), date: it.date};
+      const r = await wf(WORKER + '/deposit', {method: 'POST', body: it.blob, headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'image/jpeg', 'X-Fields': encodeURIComponent(JSON.stringify(f))}});
+      const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+      const d = await r.json().catch(() => ({}));
+      if (d.login){ store('cs_session', null); it.st = 'ready'; return toLoginPage(); }
+      if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      it.st = 'done'; LIST = LIST.filter(y => y !== it.item);
+    } catch(e){ it.st = 'fail'; it.err = e.message; }
+    dRender();
+  }
+  const ok = go.filter(x => x.st === 'done').length, bad = go.length - ok;
+  $('dbN').innerHTML = `<div class="${bad ? 'warn' : 'good'}" style="margin-top:8px">${ok ? '✅ นำฝากแล้ว ' + ok + ' ใบ · สถานะเปลี่ยนเป็น "นำฝากแล้ว" · ระบบเทียบยอดและแจ้ง Treasury ให้แล้ว' : ''}${bad ? '<br>❌ ส่งไม่สำเร็จ ' + bad + ' ใบ · กด "ส่งนำฝาก" อีกครั้ง' : ''}</div>`;
+}
+$('dcam').addEventListener('change', e => { if (e.target.files.length) dAdd([...e.target.files]); e.target.value = ''; });
+$('dbSend').addEventListener('click', dSendAll);
+$('dbList').addEventListener('change', e => {
+  const k = +(e.target.dataset.dpick || e.target.dataset.dv || 0), it = DQ.find(x => x.k === k); if (!it) return;
+  if (e.target.dataset.dpick !== undefined){ it.item = (LIST || []).find(y => y.id === e.target.value) || null; if (it.item && !dNum(it.total)) it.total = ''; dRender(); }
+  else if (e.target.dataset.f !== 'total'){ it[e.target.dataset.f] = e.target.value; dRender(); }
+});
+$('dbList').addEventListener('input', e => {
+  const it = DQ.find(x => x.k === +e.target.dataset.dv); if (!it || e.target.dataset.f !== 'total') return;
+  it.total = e.target.value;
+  const ready = DQ.filter(dReady).length; $('dbSend').disabled = dBusy || !ready; $('dbSend').textContent = ready ? `🏦 ส่งนำฝาก ${ready} ใบ` : '🏦 ส่งนำฝาก';
+});
+$('dbList').addEventListener('focusout', e => { if (e.target.dataset.f === 'total') dRender(); });
+$('dbList').addEventListener('click', e => {
+  const del = e.target.dataset.ddel, z = e.target.dataset.dzoom;
+  if (del){ const it = DQ.find(x => x.k === +del); if (it && it.st !== 'read'){ DQ = DQ.filter(x => x !== it); DQ.filter(x => x.st === 'ready' && !x.item).forEach(dMatch); dRender(); } }
+  if (z){ const it = DQ.find(x => x.k === +z); if (it) window.open(it.url, '_blank'); }
+});
 async function initDeposit(){
   document.title = 'นำฝากเช็ค'; $('h1').textContent = '🏦 นำฝากเช็ค → ถ่ายใบ Pay-in';
   $('camHint').innerHTML = 'ฝากเช็คที่ธนาคารแล้ว ถ่าย<b>ใบ Pay-in</b> ให้เต็มจอ เห็นช่องเลขที่เช็คและยอดรวมชัด · ระบบจะติ๊กเช็คที่อยู่ในใบให้';
@@ -1271,6 +1385,8 @@ async function initDeposit(){
     if (!LIST){ $('loginBox').style.display = 'block'; $('st').textContent = ''; return; }
     $('st').textContent = 'รอนำฝาก ' + LIST.length + ' ใบ' + (load('cs_name') ? ' · ' + load('cs_name') : '');
     if (!PAYIN){ FOUND = {}; FOUND_ALL = {}; $('dep').style.display = 'block'; $('dBanner').innerHTML = ''; renderDepList(); $('dTotal').value = ''; $('dDate').value = todayISO(); }
+    // ทุกครั้งใช้แบบถ่ายรวด (ใบเดียวก็ได้) · ตัวอ่านใบ Pay-in ตัวเดิมทำงานเบื้องหลัง
+    $('loginBox').style.display = 'none'; document.body.classList.add('batch'); $('dbat').style.display = 'block'; $('dbForm').href = FORMS.deposit; dRender();
   } catch(e){ $('st').textContent = '❌ ดึงรายการไม่สำเร็จ: ' + e.message + ' · รีเฟรชหน้า'; }
 }
 // เลือกได้ใบเดียว (1 ใบ Pay-in = เช็ค 1 ใบ)
