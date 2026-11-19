@@ -30,6 +30,12 @@ table.cmp{width:100%;border-collapse:collapse;font-size:15px;margin-top:10px}
 table.cmp th,table.cmp td{border-bottom:1px solid var(--line);padding:7px 4px;text-align:left;vertical-align:top}
 table.cmp th{font-size:13px;color:var(--mute);font-weight:600}
 .good{background:#ecfdf3;border:1px solid #6ce9a6;border-radius:8px;padding:10px;font-size:15px;color:#05603a;margin-bottom:8px}
+.brow{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line,#d0d5dd);border-radius:10px;padding:8px;margin-top:8px;background:#fff}
+.brow img{width:64px;height:64px;object-fit:cover;border-radius:6px;flex:none;cursor:zoom-in}
+.brow .bx{flex:1;min-width:0}.brow select{margin:0 0 4px;font-size:14px;padding:6px}
+.brow .bs{font-size:14px}.brow .bdel{background:none;border:0;font-size:18px;color:#98a2b3;cursor:pointer;padding:0 4px}
+.brow.done{background:#ecfdf3}.brow.fail{background:#fef3f2}
+body.batch main>.card:first-of-type{display:none!important}
 .r-ok{color:var(--ok);font-weight:600}.r-bad{color:#b42318;font-weight:700}.r-na{color:var(--mute)}
 a.btn{text-decoration:none;margin-top:8px}
 .drow{display:flex;gap:10px;align-items:flex-start;padding:9px 4px;border-bottom:1px solid var(--line);font-size:15px;font-weight:400;margin:0}
@@ -107,6 +113,17 @@ a.btn{text-decoration:none;margin-top:8px}
   <div id="sendN"></div>
   <button class="btn sec" id="again" style="margin-top:8px">ถ่ายใหม่</button>
   <p class="hint" style="margin-top:12px">ส่งไม่ได้? <a href="#" id="go">กรอกในฟอร์มส่งเช็คแทน</a> (ต้องแนบรูปเองในฟอร์ม)</p>
+</div>
+
+<div class="card" id="bat" style="display:none">
+  <div class="step">ขั้นที่ 1 · ถ่ายเช็คที่ได้รับ (หลายใบได้ ไม่ต้องเรียง)</div>
+  <label for="bcam" class="btn">📷 ถ่ายเช็ค / เลือกรูป</label>
+  <input id="bcam" type="file" accept="image/*" multiple hidden>
+  <p class="hint">ถ่ายทีละใบต่อกันได้เรื่อย ๆ หรือเลือกหลายรูปจากอัลบั้ม · ระบบจับคู่กับรายการที่ AR ส่งมาให้เอง</p>
+  <div id="bSum"></div>
+  <div id="bList"></div>
+  <button class="btn" id="bSend" style="margin-top:12px" disabled>✅ รับเช็ค</button>
+  <div id="bN"></div>
 </div>
 
 <div class="card" id="loginBox" style="display:none">
@@ -468,7 +485,7 @@ async function run(url){
     const ai = await aiRead('cheque');
     if (ai){
       const v = fromAI(ai); raw += 'AI ' + AI_USED + '>> ' + JSON.stringify(ai) + '\n';
-      if (MODE === 'receive') { await listReady; showReceive(v.no, v.amt, v.bank, v.date, v.toUs); } else show(v.no, v.amt, v.bank, v.payer, v.toUs, v.date);
+      if (MODE === 'receive') { await listReady; rcvOut(v.no, v.amt, v.bank, v.date, v.toUs); } else show(v.no, v.amt, v.bank, v.payer, v.toUs, v.date);
       $('st').textContent = aiTag();
     } else {
     const [we, wm, wt] = await workers(), full = gray(img);
@@ -540,15 +557,16 @@ async function run(url){
     const toUs = payeeOk(tt + '\n' + rr.text + '\n' + r1.text);
     if (!amt && src !== full) amt = parseAmount(lines.filter(l => l !== micrLine).map(l => l.text).join('\n'));
     raw += 'MICR>> ' + micr + '\nALL>> ' + r1.text;
-    if (MODE === 'receive') { await listReady; showReceive(no, amt, bank, date, toUs); } else
+    if (MODE === 'receive') { await listReady; rcvOut(no, amt, bank, date, toUs); } else
     show(no, amt, bank, payer, toUs, date);
     $('st').textContent = aiTag();
     }
   } catch(err){
     raw += 'ERR ' + err;
-    $('st').textContent = 'อ่านไม่สำเร็จ'; if (MODE === 'receive') showReceive(null, null, null, null, true); else show(null,null,null,null,true,null);
+    $('st').textContent = 'อ่านไม่สำเร็จ'; if (MODE === 'receive') rcvOut(null, null, null, null, true); else show(null,null,null,null,true,null);
   }
   $('bar').style.display = 'none';
+  if (BCB) return;   // ถ่ายรวด: ผลไปที่คิว ไม่ใช่หน้ารับทีละใบ
 }
 
 function note(id, ok, okText, noText){ const n=$(id); n.className = ok?'okk':'chk'; n.textContent = ok?okText:noText; }
@@ -708,8 +726,8 @@ async function loadList(stage){
   LIST = d.items.sort((a, b) => (a.at||0) - (b.at||0)); return LIST;
 }
 // หาเช็คในรายการที่ตรงกับที่อ่านได้: เลขที่ตรง → เลขต่าง 1 หลัก → ยอดเงินตรงใบเดียว
-function matchCheque(no, amt){
-  const L = LIST || [], amtEq = x => amt != null && Math.abs(x.amt - amt) < 0.005;
+function matchCheque(no, amt, L = LIST || []){
+  const amtEq = x => amt != null && Math.abs(x.amt - amt) < 0.005;
   if (no){
     let c = L.filter(x => x.no === no);
     if (c.length) return {item: c.find(amtEq) || c[0], how: 'no', dup: c.length};
@@ -791,6 +809,100 @@ async function receiveSend(){
   } finally { $('rSend').textContent = '✅ รับเช็คใบนี้'; if ($('rcv').style.display !== 'none') $('rSend').disabled = !$('rOkBox').hidden && !$('rOk').checked;
   }
 }
+// ── ② ถ่ายรวด: ถ่าย/เลือกหลายรูป ไม่ต้องเรียง → อ่านทีละรูป → จับคู่กับรายการรอรับ → รับทั้งหมดครั้งเดียว ──
+let BCB = null, BQ = [], bBusy = false, bSeq = 0;
+const rcvOut = (...a) => BCB ? BCB(...a) : showReceive(...a);
+function bAdd(srcs){
+  for (const s of srcs) BQ.push({k: ++bSeq, url: typeof s === 'string' ? s : URL.createObjectURL(s), st: 'wait'});
+  bRender(); bPump();
+}
+async function bPump(){
+  if (bBusy) return; bBusy = true; bRender();
+  let it;
+  while ((it = BQ.find(x => x.st === 'wait'))){
+    it.st = 'read'; bRender();
+    const v = await new Promise(res => { BCB = (no, amt, bank, date, toUs) => res({no, amt, bank: bank ? BANKS[bank] : null, date, toUs, reader: readerName()}); run(it.url); });
+    BCB = null; it.read = v; it.blob = await photoBlob(); it.st = 'ready'; bMatch(it); bRender();
+  }
+  bBusy = false; $('st').textContent = ''; bRender();
+}
+function bMatch(it){
+  const used = new Set(BQ.filter(x => x !== it && x.item && x.st !== 'done').map(x => x.item.id));
+  const m = matchCheque(it.read.no, it.read.amt, (LIST || []).filter(x => !used.has(x.id)));
+  it.item = m.item; it.how = m.how; it.ok = false; bCmp(it);
+}
+function bCmp(it){
+  const R = it.read || {}, x = it.item; it.bad = []; it.na = 0;
+  if (!x) return;
+  [['เลขที่เช็ค', R.no, R.no === x.no], ['ยอด', R.amt, R.amt != null && Math.abs(R.amt - x.amt) < 0.005],
+   ['ธนาคาร', R.bank, R.bank === x.bank], ['วันที่', R.date, R.date === bkkDate(x.date)]]
+    .forEach(([n, v, ok]) => { if (v == null) it.na++; else if (!ok) it.bad.push(n); });
+}
+const bReady = it => it.st === 'ready' && !!it.item && ((it.bad.length === 0 && it.na < 4) || it.ok);
+function bRender(){
+  if (MODE !== 'receive') return;
+  const used = new Set(BQ.filter(x => x.item && x.st !== 'done').map(x => x.item.id));
+  $('bList').innerHTML = BQ.map((it, i) => {
+    const x = it.item, R = it.read || {};
+    let st, extra = '';
+    if (it.st === 'wait') st = '<span class="r-na">⏳ รอคิวอ่าน</span>';
+    else if (it.st === 'read') st = '<span class="r-na">🤖 กำลังอ่าน…</span>';
+    else if (it.st === 'send') st = '<span class="r-na">กำลังส่ง…</span>';
+    else if (it.st === 'done') st = '<span class="r-ok">✅ รับแล้ว · ' + esc(x.no) + ' · ' + fmt(x.amt) + ' บาท</span>';
+    else if (it.st === 'fail') st = '<span class="r-bad">❌ ส่งไม่สำเร็จ: ' + esc(it.err) + '</span> · กด "รับเช็ค" อีกครั้ง';
+    else if (!x) st = '<span class="r-bad">❓ ไม่พบในรายการรอรับ</span>' + (R.no ? ' · อ่านได้เลขที่ ' + esc(R.no) : '') + '<br><span class="hint">ถ้าเป็นใบในรายการ เลือกเองด้านบน · ถ้าไม่มี อย่ารับ แจ้ง AR ให้ส่งเข้าระบบก่อน</span>';
+    else if (it.bad.length){
+      const q = new URLSearchParams({'prefill_เลขที่เช็คที่จะตีกลับ': x.ref || x.no, 'prefill_เหตุผล': 'ข้อมูลไม่ตรงกับเช็คจริง'});
+      st = '<span class="r-bad">❌ ไม่ตรงกับที่ AR ส่ง: ' + it.bad.join(', ') + '</span>';
+      extra = `<label style="font-weight:400;font-size:14px;margin:4px 0 0"><input type="checkbox" data-ok="${it.k}" ${it.ok ? 'checked' : ''} style="width:auto;margin-right:6px">ดูเช็คตัวจริงแล้ว ข้อมูล AR ถูก (ระบบอ่านผิด)</label>` +
+        `<a href="${REJECT_FORM}?${q.toString().replace(/\+/g, '%20')}" target="_blank" rel="noopener" style="font-size:14px">↩️ ตีกลับให้ AR แก้</a>`;
+    }
+    else if (it.na === 4) { st = '<span class="r-bad">⚠️ อ่านรูปไม่ได้</span> · ถ่ายใหม่ หรือดูด้วยตาแล้วติ๊กยืนยัน';
+      extra = `<label style="font-weight:400;font-size:14px;margin:4px 0 0"><input type="checkbox" data-ok="${it.k}" ${it.ok ? 'checked' : ''} style="width:auto;margin-right:6px">ดูเช็คตัวจริงแล้ว ตรงกับรายการนี้</label>`; }
+    else st = '<span class="r-ok">✅ ตรงกับที่ AR ส่ง</span>' + (it.na ? ' <span class="hint">(บางช่องอ่านไม่ได้ ดูด้วยตา)</span>' : '');
+    const pick = (it.st === 'ready' || it.st === 'fail') ? `<select data-pick="${it.k}"><option value="">— ไม่อยู่ในรายการ / เลือกเอง —</option>` +
+      (LIST || []).filter(y => y === x || !used.has(y.id)).map(y => `<option value="${esc(y.id)}" ${y === x ? 'selected' : ''}>${esc(y.no)} · ${fmt(y.amt)} บาท · ${esc(shortBank(y.bank))}</option>`).join('') + '</select>'
+      : x ? `<div style="font-weight:600">${esc(x.no)} · ${fmt(x.amt)} บาท · ${esc(shortBank(x.bank))}</div>` : '';
+    return `<div class="brow ${it.st}"><img src="${esc(it.url)}" alt="รูปที่ ${i + 1}" data-zoom="${it.k}"><div class="bx"><div class="hint">รูปที่ ${i + 1}</div>${pick}<div class="bs">${st}</div>${extra}</div>` +
+      (it.st === 'done' || it.st === 'send' ? '' : `<button class="bdel" data-del="${it.k}" title="เอารูปนี้ออก">✕</button>`) + '</div>';
+  }).join('');
+  const ready = BQ.filter(bReady).length, done = BQ.filter(x => x.st === 'done').length, chk = BQ.filter(x => x.st === 'ready' && !bReady(x)).length;
+  $('bSum').innerHTML = BQ.length ? `<div class="hint" style="margin-top:8px">${BQ.length} รูป · พร้อมรับ ${ready} · ต้องตรวจ ${chk}${done ? ' · รับแล้ว ' + done : ''}${bBusy ? ' · กำลังอ่าน…' : ''} · เหลือรอรับในระบบ ${(LIST || []).length} ใบ</div>` : '';
+  $('bSend').disabled = bBusy || !ready;
+  $('bSend').textContent = bBusy ? 'รออ่านให้ครบก่อน…' : ready ? `✅ รับเช็ค ${ready} ใบ` : '✅ รับเช็ค';
+}
+async function bSendAll(){
+  const sess = load('cs_session'); if (!sess) return toLoginPage();
+  const go = BQ.filter(bReady); $('bN').innerHTML = '';
+  for (const it of go){
+    it.st = 'send'; bRender();
+    try {
+      const r = await wf(WORKER + '/receive', {method: 'POST', body: it.blob, headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'image/jpeg',
+        'X-Fields': encodeURIComponent(JSON.stringify({no: it.item.no, ref: it.item.ref, reader: it.read.reader + ' · ถ่ายรวด · ' + (it.bad.length || it.na === 4 ? 'ไม่ตรง แต่คนรับยืนยันว่าข้อมูล AR ถูก' : 'ตรงกับที่ AR ส่ง')}))}});
+      const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+      const d = await r.json().catch(() => ({}));
+      if (d.login){ store('cs_session', null); it.st = 'ready'; return toLoginPage(); }
+      if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      it.st = 'done'; LIST = LIST.filter(y => y !== it.item);
+    } catch(e){ it.st = 'fail'; it.err = e.message; }
+    bRender();
+  }
+  const ok = go.filter(x => x.st === 'done').length, bad = go.length - ok;
+  $('bN').innerHTML = `<div class="${bad ? 'warn' : 'good'}" style="margin-top:8px">${ok ? '✅ รับแล้ว ' + ok + ' ใบ · สถานะเปลี่ยนเป็น "รอนำฝาก" · ระบบแจ้งกลุ่ม ③ ให้แล้ว' : ''}${bad ? '<br>❌ ส่งไม่สำเร็จ ' + bad + ' ใบ · กด "รับเช็ค" อีกครั้ง' : ''}</div>`;
+}
+$('bcam').addEventListener('change', e => { if (e.target.files.length) bAdd([...e.target.files]); e.target.value = ''; });
+$('bSend').addEventListener('click', bSendAll);
+$('bList').addEventListener('change', e => {
+  const k = +(e.target.dataset.pick || e.target.dataset.ok || 0), it = BQ.find(x => x.k === k); if (!it) return;
+  if (e.target.dataset.pick !== undefined){ it.item = (LIST || []).find(y => y.id === e.target.value) || null; it.how = 'pick'; it.ok = false; bCmp(it); }
+  else it.ok = e.target.checked;
+  bRender();
+});
+$('bList').addEventListener('click', e => {
+  const del = e.target.dataset.del, z = e.target.dataset.zoom;
+  if (del){ const it = BQ.find(x => x.k === +del); if (it && (it.st !== 'read')) { BQ = BQ.filter(x => x !== it); bRender(); } }
+  if (z){ const it = BQ.find(x => x.k === +z); if (it) window.open(it.url, '_blank'); }
+});
 const toLoginPage = () => { try { sessionStorage.setItem('cs_q', location.search); } catch(e){} location.href = WORKER + '/login?p=' + encodeURIComponent(location.pathname.split('/').pop() || 'index.html'); };
 async function initReceive(){
   document.title = 'รับเช็ค'; $('h1').textContent = '📷 รับเช็คจาก AR → เทียบ → รับ';
@@ -814,6 +926,9 @@ async function initReceive(){
         ? `<div class="good" style="margin-bottom:10px">📌 <b>กำลังรับเช็คเลขที่ ${esc(PIN.no)}</b><br>${fmt(PIN.amt)} บาท · ${esc(shortBank(PIN.bank))}${PIN.payer ? ' · ' + esc(PIN.payer) : ''}<br><span class="hint">ส่งโดย ${esc(PIN.by || '—')}${PIN.dept ? ' · ' + esc(PIN.dept) : ''} · ${esc(PIN.ref)}</span></div>`
         : `<div class="warn">เช็คเลขที่ ${esc(qno)} ไม่อยู่ในรายการรอรับแล้ว (อาจรับไปแล้ว ถูกตีกลับ หรือยกเลิก) · ถ่ายเช็คที่ได้รับเพื่อหาจากรายการทั้งหมดได้</div>`;
     }
+    if (!PIN){   // ไม่ได้เปิดมาจากแจ้งเตือนของใบใดใบหนึ่ง → โหมดถ่ายรวด
+      document.body.classList.add('batch'); $('bat').style.display = 'block'; bRender();
+    } else $('target').insertAdjacentHTML('beforeend', '<p class="hint"><a href="' + location.pathname + '">📷 มีหลายใบ? ถ่ายรวดทีเดียว ไม่ต้องเรียง</a></p>');
     const fq = new URLSearchParams(PIN ? {'prefill_เลขที่เช็ค': PIN.no} : {});
     $('rForm').href = FORMS.receive + (PIN ? '?' + fq.toString().replace(/\+/g, '%20') : '');
   } catch(e){ $('st').textContent = '❌ ดึงรายการไม่สำเร็จ: ' + e.message + ' · รีเฟรชหน้า'; }
