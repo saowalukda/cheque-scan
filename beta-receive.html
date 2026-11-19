@@ -37,6 +37,13 @@ table.cmp th{font-size:13px;color:var(--mute);font-weight:600}
 .brow.done{background:#ecfdf3}.brow.fail{background:#fef3f2}
 body.batch main>.card:first-of-type{display:none!important}
 body.batch #dep{display:none!important}
+#board .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px}#board .tabs button{border:1px solid var(--line,#d0d5dd);background:#fff;border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer}
+#board .tabs button.on{background:#1a56ff;color:#fff;border-color:#1a56ff}
+#board .col{margin-top:14px}#board .col h2{font-size:17px;margin:0 0 6px}
+#board .kc{border:1px solid var(--line,#d0d5dd);border-left:5px solid #98a2b3;border-radius:10px;padding:8px 10px;margin-top:8px;background:#fff;font-size:14px}
+#board .kc.late{border-left-color:#d92d20;background:#fffbfa}#board .kc b{font-size:15px}
+#board .kc .go{display:inline-block;margin-top:6px;font-weight:600}
+#board .late-t{color:#d92d20;font-weight:600}
 .brow .dg{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.brow .dg input,.brow .dg select{margin:0;padding:6px;font-size:14px;flex:1 1 120px;min-width:0}
 .r-ok{color:var(--ok);font-weight:600}.r-bad{color:#b42318;font-weight:700}.r-na{color:var(--mute)}
 a.btn{text-decoration:none;margin-top:8px}
@@ -185,6 +192,13 @@ a.btn{text-decoration:none;margin-top:8px}
   <p class="hint" style="margin-top:12px">ถ่ายรูปไม่ได้? <a id="dbForm" target="_blank" rel="noopener">กรอกในฟอร์มนำฝากแทน</a></p>
 </div>
 
+<div id="board" style="display:none">
+  <div class="tabs" id="kTabs"></div>
+  <input id="kQ" placeholder="ค้นหา เลขที่เช็ค / CHK-… / ผู้สั่งจ่าย" autocomplete="off" style="margin:0 0 4px">
+  <div class="hint" id="kSum"></div>
+  <div id="kCols"></div>
+</div>
+
 <div id="cfm" style="display:none">
   <div id="cList"></div>
 </div>
@@ -228,7 +242,7 @@ const PAYERS = ["AIA","เมืองไทยประกันชีวิต
 const $ = id => document.getElementById(id);
 // หน้าเดียวกันใช้ 2 แบบ: ส่งเช็ค (แผนก ①) / รับเช็ค (การเงิน ② · receive.html หรือ ?m=receive)
 // ③ นำฝาก: deposit.html หรือ ?m=deposit (ถ่ายใบ Pay-in → ติ๊กเช็คที่อยู่ในใบให้)
-const MODE = (location.pathname.match(/(receive|deposit|confirm)/) || [])[1] || new URLSearchParams(location.search).get('m') || 'send';
+const MODE = (location.pathname.match(/(receive|deposit|confirm|board)/) || [])[1] || new URLSearchParams(location.search).get('m') || 'send';
 const fill = (sel, opts) => { sel.innerHTML = '<option value="">— เลือก —</option>' + opts.map(o=>`<option>${o}</option>`).join(''); };
 fill($('bank'), BANK_OPTS); fill($('payer'), PAYERS);
 
@@ -1477,6 +1491,51 @@ async function initConfirm(){
   } catch(e){ $('cList').innerHTML = '<div class="warn">❌ ดึงรายการไม่สำเร็จ: ' + esc(e.message) + ' · รีเฟรชหน้า</div>'; $('cfm').style.display = 'block'; }
 }
 if (MODE === 'confirm') initConfirm();
+// ── 📋 บอร์ดงานเช็ค (Kanban): ทุกขั้นในหน้าเดียว · เก่าสุดก่อน · ค้าง ≥ 2 วันขึ้นแดง · กดการ์ด → ไปหน้าทำงานของขั้นนั้น ──
+const KCOL = [
+  {st: 'receive', h: '② รอการเงินรับ', who: 'การเงิน', go: 'receive', btn: '📷 ไปถ่ายรับเช็ค'},
+  {st: 'deposit', h: '③ รอนำฝาก', who: 'การเงิน', go: 'deposit', btn: '🏦 ไปถ่ายใบ Pay-in'},
+  {st: 'confirm', h: '④ รอ Treasury ยืนยันเงินเข้า', who: 'Treasury', go: 'confirm', btn: '💰 ไปตรวจและยืนยัน'}];
+const KTABS = [['all', 'ทั้งหมด'], ['receive', '② รอรับ'], ['deposit', '③ รอนำฝาก'], ['confirm', '④ รอยืนยัน'], ['mine', '👤 เช็คที่ฉันส่ง']];
+let KD = {}, KTAB = new URLSearchParams(location.search).get('tab') || 'all';
+const kAge = ms => ms ? Math.floor((Date.now() - ms) / 864e5) : null;
+const kPage = go => { const b = /beta/.test(location.pathname); return /scan\.html$/.test(location.pathname) ? 'scan.html?m=' + go + '&' : (b ? 'beta-' : '') + go + '.html?'; };
+function kRender(){
+  if (!KTABS.some(t => t[0] === KTAB)) KTAB = 'all';
+  $('kTabs').innerHTML = KTABS.map(([k, n]) => `<button data-tab="${k}" class="${k === KTAB ? 'on' : ''}">${n}${k === 'all' || k === 'mine' ? '' : ' ' + (KD[k] || []).length}</button>`).join('');
+  const q = $('kQ').value.trim().toLowerCase(), me = load('cs_name') || '';
+  const hit = x => !q || [x.no, x.ref, x.payer, x.by, x.dept].some(v => String(v || '').toLowerCase().includes(q));
+  let n = 0, late = 0;
+  $('kCols').innerHTML = KCOL.filter(c => KTAB === 'all' || KTAB === 'mine' || KTAB === c.st).map(c => {
+    const L = (KD[c.st] || []).filter(x => hit(x) && (KTAB !== 'mine' || (me && x.by === me)));
+    n += L.length;
+    return `<div class="col"><h2>${c.h} <span class="hint">(${L.length})</span></h2>` + (L.length ? L.map(x => {
+      const a = kAge(x.at), bad = a != null && a >= 2; if (bad) late++;
+      const link = kPage(c.go) + (c.st === 'confirm' ? 'q=' + encodeURIComponent(x.ref || x.no) : 'no=' + encodeURIComponent(x.no) + '&ref=' + encodeURIComponent(x.ref || ''));
+      return `<div class="kc${bad ? ' late' : ''}"><b>${esc(x.no)}</b> · ${fmt(x.amt)} บาท · ${esc(shortBank(x.bank))}<br>` +
+        `<span class="hint">${esc(x.payer || '—')} · ส่งโดย ${esc(x.by || '—')}${x.dept ? ' · ' + esc(x.dept) : ''} · ${esc(x.ref || '')}</span><br>` +
+        (a == null ? '' : bad ? `<span class="late-t">⏰ ค้าง ${a} วัน (นับจากวันที่ส่งเข้าระบบ)</span>` : `<span class="hint">ส่งเข้าระบบ${a ? ' ' + a + ' วันก่อน' : 'วันนี้'}</span>`) +
+        (x.edits ? `<br><span class="hint">✏️ มีการแก้ข้อมูล</span>` : '') +
+        `<br><a class="go" href="${link}">${c.btn} →</a> <span class="hint">(${c.who})</span></div>`;
+    }).join('') : '<p class="hint">ไม่มีงานค้าง 🎉</p>') + '</div>';
+  }).join('');
+  $('kSum').textContent = `${n} ใบ${late ? ' · ค้างเกิน 2 วัน ' + late + ' ใบ (สีแดง)' : ''} · อัปเดต ${new Date().toLocaleTimeString('th-TH', {hour: '2-digit', minute: '2-digit'})}` + (KTAB === 'mine' && !me ? ' · ล็อกอินใหม่เพื่อแสดงชื่อ' : '');
+}
+async function initBoard(){
+  document.title = 'บอร์ดงานเช็ค'; $('h1').textContent = '📋 บอร์ดงานเช็ค · ใบไหนอยู่ขั้นไหน';
+  document.querySelector('main > .card').style.display = 'none';
+  $('loginBtn').onclick = toLoginPage;
+  $('loginBox').querySelector('p').textContent = 'เข้าสู่ระบบ Lark ก่อน 1 ครั้ง เพื่อดูเช็คทุกขั้น';
+  if (!load('cs_session')){ $('loginBox').style.display = 'block'; return; }
+  $('board').style.display = 'block'; $('kSum').textContent = 'กำลังดึงรายการ…';
+  try {
+    for (const c of KCOL){ await loadList(c.st); if (!LIST){ $('board').style.display = 'none'; $('loginBox').style.display = 'block'; return; } KD[c.st] = LIST; }
+    kRender();
+  } catch(e){ $('kSum').innerHTML = '<span class="r-bad">❌ ดึงรายการไม่สำเร็จ: ' + esc(e.message) + ' · รีเฟรชหน้า</span>'; }
+}
+$('kTabs').addEventListener('click', e => { const t = e.target.dataset.tab; if (!t) return; KTAB = t; history.replaceState(null, '', '?' + new URLSearchParams({...Object.fromEntries(new URLSearchParams(location.search)), tab: t})); kRender(); });
+$('kQ').addEventListener('input', kRender);
+if (MODE === 'board') initBoard();
 
 $('next').addEventListener('click', () => { $('done').style.display = 'none'; $('cam').value=''; $('pv').style.display='none'; $('st').textContent=''; window.scrollTo(0,0); $('cam').click(); });
 </script>
