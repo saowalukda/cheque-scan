@@ -126,6 +126,13 @@ a.btn{text-decoration:none;margin-top:8px}
   <div id="bN"></div>
 </div>
 
+<div class="card" id="aEdit" style="display:none">
+  <div class="step">✏️ แก้ข้อมูลเช็คที่ส่งไปแล้ว (ได้จนกว่าการเงินจะรับ)</div>
+  <div id="aList"></div>
+  <div id="aForm"></div>
+  <div id="aN"></div>
+</div>
+
 <div class="card" id="loginBox" style="display:none">
   <p>เข้าสู่ระบบ Lark ก่อน 1 ครั้ง เพื่อดึงรายการเช็คที่ AR ส่งมา</p>
   <a class="btn" id="loginBtn">เข้าสู่ระบบ Lark</a>
@@ -838,7 +845,23 @@ function bCmp(it){
    ['ธนาคาร', R.bank, R.bank === x.bank], ['วันที่', R.date, R.date === bkkDate(x.date)]]
     .forEach(([n, v, ok]) => { if (v == null) it.na++; else if (!ok) it.bad.push(n); });
 }
-const bReady = it => it.st === 'ready' && !!it.item && ((it.bad.length === 0 && it.na < 4) || it.ok);
+const bFixOk = it => it.fixOn && Object.entries(it.fix || {}).every(([f, v]) => f === 'no' ? /^\d{6,10}$/.test(v) : f === 'amt' ? +String(v).replace(/,/g, '') > 0 : !!v);
+const bReady = it => it.st === 'ready' && !!it.item && ((it.bad.length === 0 && it.na < 4) || it.ok || bFixOk(it));
+// ช่องที่ไม่ตรง → ช่องแก้ (ค่าตั้งต้น = ที่ระบบอ่านจากรูป · บอกค่าที่ AR ส่งไว้ข้าง ๆ)
+const FIXF = {'เลขที่เช็ค': 'no', 'ยอด': 'amt', 'ธนาคาร': 'bank', 'วันที่': 'date'};
+function bFixStart(it){
+  const R = it.read || {}; it.fixOn = true; it.ok = false; it.fix = {};
+  for (const n of it.bad){ const f = FIXF[n]; it.fix[f] = f === 'amt' ? (R.amt != null ? fmt(R.amt) : '') : f === 'date' ? (R.date || '') : (R[f] || ''); }
+}
+function bFixForm(it){
+  const x = it.item, was = {no: x.no, amt: fmt(x.amt), bank: shortBank(x.bank), date: thDate(bkkDate(x.date))};
+  return Object.entries(it.fix).map(([f, v]) => {
+    const lab = {no: 'เลขที่เช็ค', amt: 'จำนวนเงิน (บาท)', bank: 'ธนาคาร', date: 'วันที่บนเช็ค'}[f], d = `data-fv="${it.k}" data-f="${f}"`;
+    const inp = f === 'bank' ? `<select ${d}>` + Object.values(BANKS).filter((b, i, a) => a.indexOf(b) === i).map(b => `<option ${b === v ? 'selected' : ''}>${esc(b)}</option>`).join('') + '</select>'
+      : `<input ${d} value="${esc(v)}" ${f === 'date' ? 'type="date"' : f === 'no' ? 'inputmode="numeric"' : 'inputmode="decimal"'} style="margin:0;padding:6px;font-size:15px">`;
+    return `<div style="margin-top:6px;font-size:14px">${lab} <span class="hint">(AR ส่ง: ${esc(was[f])})</span>${inp}</div>`;
+  }).join('');
+}
 function bRender(){
   if (MODE !== 'receive') return;
   const used = new Set(BQ.filter(x => x.item && x.st !== 'done').map(x => x.item.id));
@@ -848,13 +871,15 @@ function bRender(){
     if (it.st === 'wait') st = '<span class="r-na">⏳ รอคิวอ่าน</span>';
     else if (it.st === 'read') st = '<span class="r-na">🤖 กำลังอ่าน…</span>';
     else if (it.st === 'send') st = '<span class="r-na">กำลังส่ง…</span>';
-    else if (it.st === 'done') st = '<span class="r-ok">✅ รับแล้ว · ' + esc(x.no) + ' · ' + fmt(x.amt) + ' บาท</span>';
+    else if (it.st === 'done') st = '<span class="r-ok">✅ รับแล้ว · ' + esc(x.no) + (it.fixOn ? ' · แก้ข้อมูลตามเช็คจริงแล้ว (แจ้ง AR)' : ' · ' + fmt(x.amt) + ' บาท') + '</span>';
     else if (it.st === 'fail') st = '<span class="r-bad">❌ ส่งไม่สำเร็จ: ' + esc(it.err) + '</span> · กด "รับเช็ค" อีกครั้ง';
     else if (!x) st = '<span class="r-bad">❓ ไม่พบในรายการรอรับ</span>' + (R.no ? ' · อ่านได้เลขที่ ' + esc(R.no) : '') + '<br><span class="hint">ถ้าเป็นใบในรายการ เลือกเองด้านบน · ถ้าไม่มี อย่ารับ แจ้ง AR ให้ส่งเข้าระบบก่อน</span>';
     else if (it.bad.length){
       const q = new URLSearchParams({'prefill_เลขที่เช็คที่จะตีกลับ': x.ref || x.no, 'prefill_เหตุผล': 'ข้อมูลไม่ตรงกับเช็คจริง'});
-      st = '<span class="r-bad">❌ ไม่ตรงกับที่ AR ส่ง: ' + it.bad.join(', ') + '</span>';
-      extra = `<label style="font-weight:400;font-size:14px;margin:4px 0 0"><input type="checkbox" data-ok="${it.k}" ${it.ok ? 'checked' : ''} style="width:auto;margin-right:6px">ดูเช็คตัวจริงแล้ว ข้อมูล AR ถูก (ระบบอ่านผิด)</label>` +
+      st = it.fixOn ? '<span class="r-ok">✏️ แก้ตามเช็คจริง</span> <span class="hint">(ตรวจกับเช็คตัวจริง แล้วแก้ช่องด้านล่างถ้าจำเป็น)</span>'
+        : '<span class="r-bad">❌ ไม่ตรงกับที่ AR ส่ง: ' + it.bad.join(', ') + '</span>';
+      extra = it.fixOn ? bFixForm(it) + `<a href="#" data-fixoff="${it.k}" style="font-size:14px">ยกเลิกการแก้</a>` :
+        `<button class="btn sec" data-fix="${it.k}" style="margin:6px 0 2px;padding:8px;font-size:15px">✏️ แก้ตามเช็คจริง</button>` + `<label style="font-weight:400;font-size:14px;margin:4px 0 0"><input type="checkbox" data-ok="${it.k}" ${it.ok ? 'checked' : ''} style="width:auto;margin-right:6px">ดูเช็คตัวจริงแล้ว ข้อมูล AR ถูก (ระบบอ่านผิด)</label>` +
         `<a href="${REJECT_FORM}?${q.toString().replace(/\+/g, '%20')}" target="_blank" rel="noopener" style="font-size:14px">↩️ ตีกลับให้ AR แก้</a>`;
     }
     else if (it.na === 4) { st = '<span class="r-bad">⚠️ อ่านรูปไม่ได้</span> · ถ่ายใหม่ หรือดูด้วยตาแล้วติ๊กยืนยัน';
@@ -877,8 +902,19 @@ async function bSendAll(){
   for (const it of go){
     it.st = 'send'; bRender();
     try {
+      let fixNote = '';
+      if (it.fixOn && it.fix){
+        const ch = {...it.fix}; if (ch.amt != null) ch.amt = +String(ch.amt).replace(/,/g, '');
+        const rf = await wf(WORKER + '/fix', {method: 'POST', headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'application/json'},
+          body: JSON.stringify({id: it.item.id, by: 'receive', changes: ch})});
+        const df = await rf.json().catch(() => ({}));
+        if (df.login){ store('cs_session', null); it.st = 'ready'; return toLoginPage(); }
+        if (!df.ok) throw new Error('แก้ข้อมูลไม่สำเร็จ: ' + (df.error || rf.status));
+        if (df.no) it.item.no = df.no;
+        fixNote = 'แก้ตามเช็คจริง ' + Object.keys(it.fix).length + ' ช่อง';
+      }
       const r = await wf(WORKER + '/receive', {method: 'POST', body: it.blob, headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'image/jpeg',
-        'X-Fields': encodeURIComponent(JSON.stringify({no: it.item.no, ref: it.item.ref, reader: it.read.reader + ' · ถ่ายรวด · ' + (it.bad.length || it.na === 4 ? 'ไม่ตรง แต่คนรับยืนยันว่าข้อมูล AR ถูก' : 'ตรงกับที่ AR ส่ง')}))}});
+        'X-Fields': encodeURIComponent(JSON.stringify({no: it.item.no, ref: it.item.ref, reader: it.read.reader + ' · ถ่ายรวด · ' + (fixNote || (it.bad.length || it.na === 4 ? 'ไม่ตรง แต่คนรับยืนยันว่าข้อมูล AR ถูก' : 'ตรงกับที่ AR ส่ง'))}))}});
       const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
       const d = await r.json().catch(() => ({}));
       if (d.login){ store('cs_session', null); it.st = 'ready'; return toLoginPage(); }
@@ -893,16 +929,66 @@ async function bSendAll(){
 $('bcam').addEventListener('change', e => { if (e.target.files.length) bAdd([...e.target.files]); e.target.value = ''; });
 $('bSend').addEventListener('click', bSendAll);
 $('bList').addEventListener('change', e => {
+  if (e.target.dataset.fv) return;
   const k = +(e.target.dataset.pick || e.target.dataset.ok || 0), it = BQ.find(x => x.k === k); if (!it) return;
-  if (e.target.dataset.pick !== undefined){ it.item = (LIST || []).find(y => y.id === e.target.value) || null; it.how = 'pick'; it.ok = false; bCmp(it); }
+  if (e.target.dataset.pick !== undefined){ it.item = (LIST || []).find(y => y.id === e.target.value) || null; it.how = 'pick'; it.ok = false; it.fixOn = false; it.fix = null; bCmp(it); }
   else it.ok = e.target.checked;
   bRender();
 });
+$('bList').addEventListener('input', e => {
+  const it = BQ.find(x => x.k === +e.target.dataset.fv); if (!it) return;
+  it.fix[e.target.dataset.f] = e.target.value;
+  const ready = BQ.filter(bReady).length; $('bSend').disabled = bBusy || !ready; $('bSend').textContent = ready ? `✅ รับเช็ค ${ready} ใบ` : '✅ รับเช็ค';
+});
 $('bList').addEventListener('click', e => {
+  if (e.target.dataset.fix){ const it = BQ.find(x => x.k === +e.target.dataset.fix); if (it){ bFixStart(it); bRender(); } return; }
+  if (e.target.dataset.fixoff){ e.preventDefault(); const it = BQ.find(x => x.k === +e.target.dataset.fixoff); if (it){ it.fixOn = false; it.fix = null; bRender(); } return; }
   const del = e.target.dataset.del, z = e.target.dataset.zoom;
   if (del){ const it = BQ.find(x => x.k === +del); if (it && (it.st !== 'read')) { BQ = BQ.filter(x => x !== it); bRender(); } }
   if (z){ const it = BQ.find(x => x.k === +z); if (it) window.open(it.url, '_blank'); }
 });
+// ── ① คนส่งแก้ข้อมูลเช็คที่ส่งแล้ว (ก่อนการเงินรับ) → /fix by 'send' · เก็บค่าเดิม→ใหม่ใน Edit Log ──
+let AL = null, AI_ = null;
+async function aOpen(){
+  $('aEdit').style.display = 'block'; $('aForm').innerHTML = ''; $('aN').innerHTML = '';
+  if (!load('cs_session')){ $('aList').innerHTML = '<p>ล็อกอิน Lark ก่อน 1 ครั้ง</p><a class="btn" href="#" id="aLogin">เข้าสู่ระบบ Lark</a>'; $('aLogin').onclick = e => { e.preventDefault(); try { sessionStorage.setItem('cs_q', '?edit=1'); } catch(x){} toLoginPage(); }; return; }
+  $('aList').innerHTML = '<p class="hint">กำลังดึงเช็คที่รอการเงินรับ…</p>';
+  try { AL = await loadList('receive'); } catch(e){ $('aList').innerHTML = '<div class="warn">ดึงรายการไม่สำเร็จ: ' + esc(e.message) + '</div>'; return; }
+  if (!AL){ $('aList').innerHTML = '<a class="btn" href="#" id="aLogin">เข้าสู่ระบบ Lark</a>'; $('aLogin').onclick = e => { e.preventDefault(); toLoginPage(); }; return; }
+  const me = load('cs_name') || '', L = [...AL].sort((a, b) => (b.by === me) - (a.by === me) || (b.at || 0) - (a.at || 0));
+  $('aList').innerHTML = L.length ? '<label for="aPick">เลือกเช็คที่จะแก้ (' + L.length + ' ใบที่การเงินยังไม่รับ)</label><select id="aPick"><option value="">— เลือก —</option>' +
+    L.map(x => `<option value="${esc(x.id)}">${esc(x.no)} · ${fmt(x.amt)} บาท · ${esc(shortBank(x.bank))}${x.by === me ? ' · ของฉัน' : x.by ? ' · ' + esc(x.by) : ''}</option>`).join('') + '</select>'
+    : '<p class="hint">ไม่มีเช็คที่รอการเงินรับ · ถ้าการเงินรับแล้ว ใช้ฟอร์มขอแก้ไขแทน</p>';
+  if ($('aPick')) $('aPick').onchange = aForm;
+  $('aEdit').scrollIntoView({behavior: 'smooth'});
+}
+function aForm(){
+  AI_ = (AL || []).find(x => x.id === $('aPick').value); $('aN').innerHTML = '';
+  if (!AI_){ $('aForm').innerHTML = ''; return; }
+  const banks = Object.values(BANKS).filter((b, i, a) => a.indexOf(b) === i && b !== BANK_OTHER);
+  $('aForm').innerHTML = `<label>เลขที่เช็ค</label><input id="aNo" inputmode="numeric" value="${esc(AI_.no)}">` +
+    `<label>จำนวนเงิน (บาท)</label><input id="aAmt" inputmode="decimal" value="${fmt(AI_.amt)}">` +
+    `<label>ธนาคาร</label><select id="aBank">${banks.map(b => `<option ${b === AI_.bank ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>` +
+    `<label>วันที่บนเช็ค</label><input id="aDt" type="date" value="${bkkDate(AI_.date)}">` +
+    (AI_.edits ? `<p class="hint" style="white-space:pre-line;margin-top:8px">ประวัติการแก้:\n${esc(AI_.edits)}</p>` : '') +
+    `<button class="btn" id="aSave" style="margin-top:12px">💾 บันทึกการแก้</button>` +
+    `<p class="hint">ระบบเก็บค่าเดิมไว้ในประวัติ · การเงินจะเห็นข้อมูลใหม่ตอนรับเช็ค</p>`;
+  $('aSave').onclick = aSave;
+}
+async function aSave(){
+  const ch = {no: $('aNo').value.replace(/\D/g, ''), amt: +$('aAmt').value.replace(/,/g, ''), bank: $('aBank').value, date: $('aDt').value};
+  $('aSave').disabled = true; $('aSave').textContent = 'กำลังบันทึก…';
+  try {
+    const r = await wf(WORKER + '/fix', {method: 'POST', headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'application/json'}, body: JSON.stringify({id: AI_.id, by: 'send', changes: ch})});
+    const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+    const d = await r.json().catch(() => ({}));
+    if (d.login){ store('cs_session', null); return toLoginPage(); }
+    if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    $('aN').innerHTML = d.changed ? '<div class="good" style="margin-top:8px">✅ บันทึกแล้ว · ' + esc(d.log.split(': ').slice(1).join(': ')) + '</div>' : '<div class="hint" style="margin-top:8px">ไม่มีช่องที่เปลี่ยน</div>';
+    if (d.changed) Object.assign(AI_, {no: ch.no, amt: ch.amt, bank: ch.bank, date: Date.UTC(+ch.date.slice(0, 4), +ch.date.slice(5, 7) - 1, +ch.date.slice(8, 10)) - 7 * 3600e3, edits: (AI_.edits ? AI_.edits + '\n' : '') + d.log});
+  } catch(e){ $('aN').innerHTML = '<div class="warn" style="margin-top:8px">❌ บันทึกไม่สำเร็จ: ' + esc(e.message) + '</div>'; }
+  finally { $('aSave').disabled = false; $('aSave').textContent = '💾 บันทึกการแก้'; }
+}
 const toLoginPage = () => { try { sessionStorage.setItem('cs_q', location.search); } catch(e){} location.href = WORKER + '/login?p=' + encodeURIComponent(location.pathname.split('/').pop() || 'index.html'); };
 async function initReceive(){
   document.title = 'รับเช็ค'; $('h1').textContent = '📷 รับเช็คจาก AR → เทียบ → รับ';
@@ -926,9 +1012,10 @@ async function initReceive(){
         ? `<div class="good" style="margin-bottom:10px">📌 <b>กำลังรับเช็คเลขที่ ${esc(PIN.no)}</b><br>${fmt(PIN.amt)} บาท · ${esc(shortBank(PIN.bank))}${PIN.payer ? ' · ' + esc(PIN.payer) : ''}<br><span class="hint">ส่งโดย ${esc(PIN.by || '—')}${PIN.dept ? ' · ' + esc(PIN.dept) : ''} · ${esc(PIN.ref)}</span></div>`
         : `<div class="warn">เช็คเลขที่ ${esc(qno)} ไม่อยู่ในรายการรอรับแล้ว (อาจรับไปแล้ว ถูกตีกลับ หรือยกเลิก) · ถ่ายเช็คที่ได้รับเพื่อหาจากรายการทั้งหมดได้</div>`;
     }
-    if (!PIN){   // ไม่ได้เปิดมาจากแจ้งเตือนของใบใดใบหนึ่ง → โหมดถ่ายรวด
-      document.body.classList.add('batch'); $('bat').style.display = 'block'; bRender();
-    } else $('target').insertAdjacentHTML('beforeend', '<p class="hint"><a href="' + location.pathname + '">📷 มีหลายใบ? ถ่ายรวดทีเดียว ไม่ต้องเรียง</a></p>');
+    // ทุกครั้งใช้แบบถ่ายรวด (เปิดจากแจ้งเตือนของใบใดใบหนึ่งก็ถ่ายหลายใบได้ ระบบจับคู่เอง)
+    document.body.classList.add('batch'); $('bat').style.display = 'block';
+    if (PIN) $('bat').insertAdjacentHTML('afterbegin', $('target').innerHTML.replace('กำลังรับเช็คเลขที่', 'เปิดมาจากแจ้งเตือน: เช็คเลขที่') + '<p class="hint">ถ่ายเช็คใบนี้ หรือถ่ายหลายใบพร้อมกันก็ได้ ระบบจับคู่ให้เอง</p>');
+    bRender();
     const fq = new URLSearchParams(PIN ? {'prefill_เลขที่เช็ค': PIN.no} : {});
     $('rForm').href = FORMS.receive + (PIN ? '?' + fq.toString().replace(/\+/g, '%20') : '');
   } catch(e){ $('st').textContent = '❌ ดึงรายการไม่สำเร็จ: ' + e.message + ' · รีเฟรชหน้า'; }
@@ -938,6 +1025,11 @@ $('rOk').addEventListener('change', () => { $('rSend').disabled = !$('rOk').chec
 $('rSend').addEventListener('click', receiveSend);
 $('rAgain').addEventListener('click', () => { $('cam').value=''; $('cam').click(); });
 if (MODE === 'receive') initReceive();
+if (MODE === 'send' && WORKER){
+  document.querySelector('main').insertAdjacentHTML('beforeend', '<p class="hint" style="text-align:center;margin:16px 0"><a href="#" id="aOpen">✏️ แก้ข้อมูลเช็คที่ส่งไปแล้ว (ก่อนการเงินรับ)</a></p>');
+  $('aOpen').onclick = e => { e.preventDefault(); aOpen(); };
+  if (/[?&]edit=1/.test(location.search)) setTimeout(aOpen, 0);
+}
 if (MODE === 'send' && WORKER && !load('cs_session')) { $('aiHint').hidden = false; document.querySelector('label[for=cam]').classList.add('sec'); $('aiLogin').onclick = e => { e.preventDefault(); toLoginPage(); }; }
 
 // ── ③ นำฝาก: อ่านใบ Pay-in แล้วจับคู่กับเช็คที่รอนำฝาก (เทียบกับรายการ ไม่เดาเลขเอง) ──────────
