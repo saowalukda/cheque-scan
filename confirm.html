@@ -30,6 +30,21 @@ table.cmp{width:100%;border-collapse:collapse;font-size:15px;margin-top:10px}
 table.cmp th,table.cmp td{border-bottom:1px solid var(--line);padding:7px 4px;text-align:left;vertical-align:top}
 table.cmp th{font-size:13px;color:var(--mute);font-weight:600}
 .good{background:#ecfdf3;border:1px solid #6ce9a6;border-radius:8px;padding:10px;font-size:15px;color:#05603a;margin-bottom:8px}
+.brow{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line,#d0d5dd);border-radius:10px;padding:8px;margin-top:8px;background:#fff}
+.brow img{width:64px;height:64px;object-fit:cover;border-radius:6px;flex:none;cursor:zoom-in}
+.brow .bx{flex:1;min-width:0}.brow select{margin:0 0 4px;font-size:14px;padding:6px}
+.brow .bs{font-size:14px}.brow .bdel{background:none;border:0;font-size:18px;color:#98a2b3;cursor:pointer;padding:0 4px}
+.brow.done{background:#ecfdf3}.brow.fail{background:#fef3f2}
+body.batch main>.card:first-of-type{display:none!important}
+body.batch #dep{display:none!important}
+#board .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px}#board .tabs button{border:1px solid var(--line,#d0d5dd);background:#fff;border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer}
+#board .tabs button.on{background:#1a56ff;color:#fff;border-color:#1a56ff}
+#board .col{margin-top:14px}#board .col h2{font-size:17px;margin:0 0 6px}
+#board .kc{border:1px solid var(--line,#d0d5dd);border-left:5px solid #98a2b3;border-radius:10px;padding:8px 10px;margin-top:8px;background:#fff;font-size:14px}
+#board .kc.late{border-left-color:#d92d20;background:#fffbfa}#board .kc b{font-size:15px}
+#board .kc .go{display:inline-block;margin-top:6px;font-weight:600}
+#board .late-t{color:#d92d20;font-weight:600}
+.brow .dg{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}.brow .dg input,.brow .dg select{margin:0;padding:6px;font-size:14px;flex:1 1 120px;min-width:0}
 .r-ok{color:var(--ok);font-weight:600}.r-bad{color:#b42318;font-weight:700}.r-na{color:var(--mute)}
 a.btn{text-decoration:none;margin-top:8px}
 .drow{display:flex;gap:10px;align-items:flex-start;padding:9px 4px;border-bottom:1px solid var(--line);font-size:15px;font-weight:400;margin:0}
@@ -109,6 +124,24 @@ a.btn{text-decoration:none;margin-top:8px}
   <p class="hint" style="margin-top:12px">ส่งไม่ได้? <a href="#" id="go">กรอกในฟอร์มส่งเช็คแทน</a> (ต้องแนบรูปเองในฟอร์ม)</p>
 </div>
 
+<div class="card" id="bat" style="display:none">
+  <div class="step">ขั้นที่ 1 · ถ่ายเช็คที่ได้รับ (หลายใบได้ ไม่ต้องเรียง)</div>
+  <label for="bcam" class="btn">📷 ถ่ายเช็ค / เลือกรูป</label>
+  <input id="bcam" type="file" accept="image/*" multiple hidden>
+  <p class="hint">ถ่ายทีละใบต่อกันได้เรื่อย ๆ หรือเลือกหลายรูปจากอัลบั้ม · ระบบจับคู่กับรายการที่ AR ส่งมาให้เอง</p>
+  <div id="bSum"></div>
+  <div id="bList"></div>
+  <button class="btn" id="bSend" style="margin-top:12px" disabled>✅ รับเช็ค</button>
+  <div id="bN"></div>
+</div>
+
+<div class="card" id="aEdit" style="display:none">
+  <div class="step">✏️ แก้ข้อมูลเช็คที่ส่งไปแล้ว (ได้จนกว่าการเงินจะรับ)</div>
+  <div id="aList"></div>
+  <div id="aForm"></div>
+  <div id="aN"></div>
+</div>
+
 <div class="card" id="loginBox" style="display:none">
   <p>เข้าสู่ระบบ Lark ก่อน 1 ครั้ง เพื่อดึงรายการเช็คที่ AR ส่งมา</p>
   <a class="btn" id="loginBtn">เข้าสู่ระบบ Lark</a>
@@ -147,6 +180,25 @@ a.btn{text-decoration:none;margin-top:8px}
   <p class="hint" style="margin-top:12px">ถ่ายรูปไม่ได้? <a id="dForm" target="_blank" rel="noopener">กรอกในฟอร์มนำฝากแทน</a></p>
 </div>
 
+<div class="card" id="dbat" style="display:none">
+  <div class="step">ขั้นที่ 1 · ถ่ายใบ Pay-in (หลายใบได้ ไม่ต้องเรียง)</div>
+  <label for="dcam" class="btn">📷 ถ่ายใบ Pay-in / เลือกรูป</label>
+  <input id="dcam" type="file" accept="image/*" multiple hidden>
+  <p class="hint">ใบ Pay-in 1 ใบ ต่อเช็ค 1 ใบ · ระบบหาเช็คที่อยู่ในแต่ละใบ และกรอกยอด ธนาคาร วันที่ให้เอง · ตรวจแล้วกดส่งครั้งเดียว</p>
+  <div id="dbSum"></div>
+  <div id="dbList"></div>
+  <button class="btn" id="dbSend" style="margin-top:12px" disabled>🏦 ส่งนำฝาก</button>
+  <div id="dbN"></div>
+  <p class="hint" style="margin-top:12px">ถ่ายรูปไม่ได้? <a id="dbForm" target="_blank" rel="noopener">กรอกในฟอร์มนำฝากแทน</a></p>
+</div>
+
+<div id="board" style="display:none">
+  <div class="tabs" id="kTabs"></div>
+  <input id="kQ" placeholder="ค้นหา เลขที่เช็ค / CHK-… / ผู้สั่งจ่าย" autocomplete="off" style="margin:0 0 4px">
+  <div class="hint" id="kSum"></div>
+  <div id="kCols"></div>
+</div>
+
 <div id="cfm" style="display:none">
   <div id="cList"></div>
 </div>
@@ -155,12 +207,14 @@ a.btn{text-decoration:none;margin-top:8px}
   <div style="font-size:20px;font-weight:700;color:var(--ok)" id="doneH">✅ ส่งเช็คแล้ว</div>
   <p id="doneT"></p>
   <p class="hint" id="doneHint">ระบบจะแจ้งในแชท Lark เหมือนส่งจากฟอร์ม · นำเช็คตัวจริงไปให้การเงินภายในวันนี้</p>
+  <a href="#" class="btn sec" id="doneEdit" hidden style="margin-bottom:8px">✏️ AI อ่านผิด / ส่งผิด? แก้ใบนี้</a>
   <button class="btn" id="next">สแกนใบต่อไป</button>
 </div>
 </main>
 
 <script>
 let ENV = 'prod';   // tools/build.py ตั้งเป็น 'dev' ในหน้า beta-*.html → ทุกอย่างไป Base Dev
+const ENV_EDITS = true;   // ทางแก้สิ่งที่ส่งไปแล้ว (ตัวกลางเปิดเฉพาะที่ EDITS=1 · Prod เปิดตอน Deploy ตาม docs/deploy_round1.md)
 const SH = 'https://ujpzitc70et6.jp.larksuite.com/share/base/';
 const SHARES = {
   prod: {send: 'shrjp6g61h7CZF2e2UDsTKzDwAg', receive: 'shrjpwYxMAQCI7Xe1gMFYhScXYc', deposit: 'shrjpmiIoJTxsTFi0x6cHfQHwVe', reject: 'shrjp4QheY69rQIuGrJh1KxmAHf', ret: 'shrjpIuSiIbJ3R5pdIci5IDmyge'},
@@ -190,7 +244,7 @@ const PAYERS = ["AIA","เมืองไทยประกันชีวิต
 const $ = id => document.getElementById(id);
 // หน้าเดียวกันใช้ 2 แบบ: ส่งเช็ค (แผนก ①) / รับเช็ค (การเงิน ② · receive.html หรือ ?m=receive)
 // ③ นำฝาก: deposit.html หรือ ?m=deposit (ถ่ายใบ Pay-in → ติ๊กเช็คที่อยู่ในใบให้)
-const MODE = (location.pathname.match(/(receive|deposit|confirm)/) || [])[1] || new URLSearchParams(location.search).get('m') || 'send';
+const MODE = (location.pathname.match(/(receive|deposit|confirm|board)/) || [])[1] || new URLSearchParams(location.search).get('m') || 'send';
 const fill = (sel, opts) => { sel.innerHTML = '<option value="">— เลือก —</option>' + opts.map(o=>`<option>${o}</option>`).join(''); };
 fill($('bank'), BANK_OPTS); fill($('payer'), PAYERS);
 
@@ -468,7 +522,7 @@ async function run(url){
     const ai = await aiRead('cheque');
     if (ai){
       const v = fromAI(ai); raw += 'AI ' + AI_USED + '>> ' + JSON.stringify(ai) + '\n';
-      if (MODE === 'receive') { await listReady; showReceive(v.no, v.amt, v.bank, v.date, v.toUs); } else show(v.no, v.amt, v.bank, v.payer, v.toUs, v.date);
+      if (MODE === 'receive') { await listReady; rcvOut(v.no, v.amt, v.bank, v.date, v.toUs); } else show(v.no, v.amt, v.bank, v.payer, v.toUs, v.date);
       $('st').textContent = aiTag();
     } else {
     const [we, wm, wt] = await workers(), full = gray(img);
@@ -540,15 +594,16 @@ async function run(url){
     const toUs = payeeOk(tt + '\n' + rr.text + '\n' + r1.text);
     if (!amt && src !== full) amt = parseAmount(lines.filter(l => l !== micrLine).map(l => l.text).join('\n'));
     raw += 'MICR>> ' + micr + '\nALL>> ' + r1.text;
-    if (MODE === 'receive') { await listReady; showReceive(no, amt, bank, date, toUs); } else
+    if (MODE === 'receive') { await listReady; rcvOut(no, amt, bank, date, toUs); } else
     show(no, amt, bank, payer, toUs, date);
     $('st').textContent = aiTag();
     }
   } catch(err){
     raw += 'ERR ' + err;
-    $('st').textContent = 'อ่านไม่สำเร็จ'; if (MODE === 'receive') showReceive(null, null, null, null, true); else show(null,null,null,null,true,null);
+    $('st').textContent = 'อ่านไม่สำเร็จ'; if (MODE === 'receive') rcvOut(null, null, null, null, true); else show(null,null,null,null,true,null);
   }
   $('bar').style.display = 'none';
+  if (BCB) return;   // ถ่ายรวด: ผลไปที่คิว ไม่ใช่หน้ารับทีละใบ
 }
 
 function note(id, ok, okText, noText){ const n=$(id); n.className = ok?'okk':'chk'; n.textContent = ok?okText:noText; }
@@ -649,6 +704,7 @@ async function send(){
     if (d.name) store('cs_name', d.name);
     $('review').style.display = 'none'; $('done').style.display = 'block';
     $('doneT').textContent = 'เลขที่เช็ค ' + f.no + ' · ' + fmt(f.amt) + ' บาท' + (d.name ? ' · ส่งในชื่อ ' + d.name : '');
+    if (ENV_EDITS){ $('doneEdit').hidden = false; $('doneEdit').dataset.aedit = f.no; }
     if (d.mode === 'no-photo') $('doneT').textContent += ' · ⚠️ ส่งข้อมูลแล้ว แต่แนบรูปไม่สำเร็จ แจ้งแพต';
     $('done').scrollIntoView({behavior:'smooth'});
   } catch(e){
@@ -695,21 +751,22 @@ const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 const bkkDate = ms => ms ? new Date(+ms + 7*3600e3).toISOString().slice(0,10) : '';
 const thDate = iso => iso ? iso.slice(8,10) + '/' + iso.slice(5,7) + '/' + (+iso.slice(0,4) + 543) : '';
 const shortBank = b => (String(b).match(/\(([^)]+)\)\s*$/) || [,''])[1] || b;
-async function loadList(stage){
+async function loadList(stage, keep = false){   // keep = ไม่แตะ LIST (รายการที่หน้านี้กำลังใช้) เช่น ตอนเปิดแผงแก้ข้อมูล
+  const set = v => { if (!keep) LIST = v; return v; };
   const sess = load('cs_session');
-  if (!sess){ LIST = null; return null; }
+  if (!sess) return set(null);
   const r = await wf(WORKER + '/list', {method: 'POST', headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'application/json'}, body: JSON.stringify({stage})});
   const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
   const d = await r.json().catch(() => ({}));
-  if (d.login){ store('cs_session', null); LIST = null; return null; }
+  if (d.login){ store('cs_session', null); return set(null); }
   if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
   if (d.name) store('cs_name', d.name);
   // เก่าสุดก่อน (ส่งมาก่อน รับก่อน)
-  LIST = d.items.sort((a, b) => (a.at||0) - (b.at||0)); return LIST;
+  return set(d.items.sort((a, b) => (a.at||0) - (b.at||0)));
 }
 // หาเช็คในรายการที่ตรงกับที่อ่านได้: เลขที่ตรง → เลขต่าง 1 หลัก → ยอดเงินตรงใบเดียว
-function matchCheque(no, amt){
-  const L = LIST || [], amtEq = x => amt != null && Math.abs(x.amt - amt) < 0.005;
+function matchCheque(no, amt, L = LIST || []){
+  const amtEq = x => amt != null && Math.abs(x.amt - amt) < 0.005;
   if (no){
     let c = L.filter(x => x.no === no);
     if (c.length) return {item: c.find(amtEq) || c[0], how: 'no', dup: c.length};
@@ -791,6 +848,211 @@ async function receiveSend(){
   } finally { $('rSend').textContent = '✅ รับเช็คใบนี้'; if ($('rcv').style.display !== 'none') $('rSend').disabled = !$('rOkBox').hidden && !$('rOk').checked;
   }
 }
+// ── ② ถ่ายรวด: ถ่าย/เลือกหลายรูป ไม่ต้องเรียง → อ่านทีละรูป → จับคู่กับรายการรอรับ → รับทั้งหมดครั้งเดียว ──
+let BCB = null, BQ = [], bBusy = false, bSeq = 0;
+const rcvOut = (...a) => BCB ? BCB(...a) : showReceive(...a);
+function bAdd(srcs){
+  for (const s of srcs) BQ.push({k: ++bSeq, url: typeof s === 'string' ? s : URL.createObjectURL(s), st: 'wait'});
+  bRender(); bPump();
+}
+async function bPump(){
+  if (bBusy) return; bBusy = true; bRender();
+  let it;
+  while ((it = BQ.find(x => x.st === 'wait'))){
+    it.st = 'read'; bRender();
+    const v = await new Promise(res => { BCB = (no, amt, bank, date, toUs) => res({no, amt, bank: bank ? BANKS[bank] : null, date, toUs, reader: readerName()}); run(it.url); });
+    BCB = null; it.read = v; it.blob = await photoBlob(); it.st = 'ready'; bMatch(it); bRender();
+  }
+  bBusy = false; $('st').textContent = ''; bRender();
+}
+function bMatch(it){
+  const used = new Set(BQ.filter(x => x !== it && x.item && x.st !== 'done').map(x => x.item.id));
+  const m = matchCheque(it.read.no, it.read.amt, (LIST || []).filter(x => !used.has(x.id)));
+  it.item = m.item; it.how = m.how; it.ok = false; bCmp(it);
+}
+function bCmp(it){
+  const R = it.read || {}, x = it.item; it.bad = []; it.na = 0;
+  if (!x) return;
+  [['เลขที่เช็ค', R.no, R.no === x.no], ['ยอด', R.amt, R.amt != null && Math.abs(R.amt - x.amt) < 0.005],
+   ['ธนาคาร', R.bank, R.bank === x.bank], ['วันที่', R.date, R.date === bkkDate(x.date)]]
+    .forEach(([n, v, ok]) => { if (v == null) it.na++; else if (!ok) it.bad.push(n); });
+}
+const bFixOk = it => it.fixOn && Object.entries(it.fix || {}).every(([f, v]) => f === 'no' ? /^\d{6,10}$/.test(v) : f === 'amt' ? +String(v).replace(/,/g, '') > 0 : !!v);
+const bReady = it => it.st === 'ready' && !!it.item && ((it.bad.length === 0 && it.na < 4) || it.ok || bFixOk(it));
+// ช่องที่ไม่ตรง → ช่องแก้ (ค่าตั้งต้น = ที่ระบบอ่านจากรูป · บอกค่าที่ AR ส่งไว้ข้าง ๆ)
+const FIXF = {'เลขที่เช็ค': 'no', 'ยอด': 'amt', 'ธนาคาร': 'bank', 'วันที่': 'date'};
+function bFixStart(it){
+  const R = it.read || {}; it.fixOn = true; it.ok = false; it.fix = {};
+  for (const n of it.bad){ const f = FIXF[n]; it.fix[f] = f === 'amt' ? (R.amt != null ? fmt(R.amt) : '') : f === 'date' ? (R.date || '') : (R[f] || ''); }
+}
+function bFixForm(it){
+  const x = it.item, was = {no: x.no, amt: fmt(x.amt), bank: shortBank(x.bank), date: thDate(bkkDate(x.date))};
+  return Object.entries(it.fix).map(([f, v]) => {
+    const lab = {no: 'เลขที่เช็ค', amt: 'จำนวนเงิน (บาท)', bank: 'ธนาคาร', date: 'วันที่บนเช็ค'}[f], d = `data-fv="${it.k}" data-f="${f}"`;
+    const inp = f === 'bank' ? `<select ${d}>` + Object.values(BANKS).filter((b, i, a) => a.indexOf(b) === i).map(b => `<option ${b === v ? 'selected' : ''}>${esc(b)}</option>`).join('') + '</select>'
+      : `<input ${d} value="${esc(v)}" ${f === 'date' ? 'type="date"' : f === 'no' ? 'inputmode="numeric"' : 'inputmode="decimal"'} style="margin:0;padding:6px;font-size:15px">`;
+    return `<div style="margin-top:6px;font-size:14px">${lab} <span class="hint">(AR ส่ง: ${esc(was[f])})</span>${inp}</div>`;
+  }).join('');
+}
+function bRender(){
+  if (MODE !== 'receive') return;
+  const used = new Set(BQ.filter(x => x.item && x.st !== 'done').map(x => x.item.id));
+  $('bList').innerHTML = BQ.map((it, i) => {
+    const x = it.item, R = it.read || {};
+    let st, extra = '';
+    if (it.st === 'wait') st = '<span class="r-na">⏳ รอคิวอ่าน</span>';
+    else if (it.st === 'read') st = '<span class="r-na">🤖 กำลังอ่าน…</span>';
+    else if (it.st === 'send') st = '<span class="r-na">กำลังส่ง…</span>';
+    else if (it.st === 'done') st = '<span class="r-ok">✅ รับแล้ว · ' + esc(x.no) + (it.fixOn ? ' · แก้ข้อมูลตามเช็คจริงแล้ว (แจ้ง AR)' : ' · ' + fmt(x.amt) + ' บาท') + '</span>';
+    else if (it.st === 'fail') st = '<span class="r-bad">❌ ส่งไม่สำเร็จ: ' + esc(it.err) + '</span> · กด "รับเช็ค" อีกครั้ง';
+    else if (!x) st = '<span class="r-bad">❓ ไม่พบในรายการรอรับ</span>' + (R.no ? ' · อ่านได้เลขที่ ' + esc(R.no) : '') + '<br><span class="hint">ถ้าเป็นใบในรายการ เลือกเองด้านบน · ถ้าไม่มี อย่ารับ แจ้ง AR ให้ส่งเข้าระบบก่อน</span>';
+    else if (it.bad.length){
+      const q = new URLSearchParams({'prefill_เลขที่เช็คที่จะตีกลับ': x.ref || x.no, 'prefill_เหตุผล': 'ข้อมูลไม่ตรงกับเช็คจริง'});
+      st = it.fixOn ? '<span class="r-ok">✏️ แก้ตามเช็คจริง</span> <span class="hint">(ตรวจกับเช็คตัวจริง แล้วแก้ช่องด้านล่างถ้าจำเป็น)</span>'
+        : '<span class="r-bad">❌ ไม่ตรงกับที่ AR ส่ง: ' + it.bad.join(', ') + '</span>';
+      extra = it.fixOn ? bFixForm(it) + `<a href="#" data-fixoff="${it.k}" style="font-size:14px">ยกเลิกการแก้</a>` :
+        `<button class="btn sec" data-fix="${it.k}" style="margin:6px 0 2px;padding:8px;font-size:15px">✏️ แก้ตามเช็คจริง</button>` + `<label style="font-weight:400;font-size:14px;margin:4px 0 0"><input type="checkbox" data-ok="${it.k}" ${it.ok ? 'checked' : ''} style="width:auto;margin-right:6px">ดูเช็คตัวจริงแล้ว ข้อมูล AR ถูก (ระบบอ่านผิด)</label>` +
+        `<a href="${REJECT_FORM}?${q.toString().replace(/\+/g, '%20')}" target="_blank" rel="noopener" style="font-size:14px">↩️ ตีกลับให้ AR แก้</a>`;
+    }
+    else if (it.na === 4) { st = '<span class="r-bad">⚠️ อ่านรูปไม่ได้</span> · ถ่ายใหม่ หรือดูด้วยตาแล้วติ๊กยืนยัน';
+      extra = `<label style="font-weight:400;font-size:14px;margin:4px 0 0"><input type="checkbox" data-ok="${it.k}" ${it.ok ? 'checked' : ''} style="width:auto;margin-right:6px">ดูเช็คตัวจริงแล้ว ตรงกับรายการนี้</label>`; }
+    else st = '<span class="r-ok">✅ ตรงกับที่ AR ส่ง</span>' + (it.na ? ' <span class="hint">(บางช่องอ่านไม่ได้ ดูด้วยตา)</span>' : '');
+    const pick = (it.st === 'ready' || it.st === 'fail') ? `<select data-pick="${it.k}"><option value="">— ไม่อยู่ในรายการ / เลือกเอง —</option>` +
+      (LIST || []).filter(y => y === x || !used.has(y.id)).map(y => `<option value="${esc(y.id)}" ${y === x ? 'selected' : ''}>${esc(y.no)} · ${fmt(y.amt)} บาท · ${esc(shortBank(y.bank))}</option>`).join('') + '</select>'
+      : x ? `<div style="font-weight:600">${esc(x.no)} · ${fmt(x.amt)} บาท · ${esc(shortBank(x.bank))}</div>` : '';
+    return `<div class="brow ${it.st}"><img src="${esc(it.url)}" alt="รูปที่ ${i + 1}" data-zoom="${it.k}"><div class="bx"><div class="hint">รูปที่ ${i + 1}</div>${pick}<div class="bs">${st}</div>${extra}</div>` +
+      (it.st === 'done' || it.st === 'send' ? '' : `<button class="bdel" data-del="${it.k}" title="เอารูปนี้ออก">✕</button>`) + '</div>';
+  }).join('');
+  const ready = BQ.filter(bReady).length, done = BQ.filter(x => x.st === 'done').length, chk = BQ.filter(x => x.st === 'ready' && !bReady(x)).length;
+  $('bSum').innerHTML = BQ.length ? `<div class="hint" style="margin-top:8px">${BQ.length} รูป · พร้อมรับ ${ready} · ต้องตรวจ ${chk}${done ? ' · รับแล้ว ' + done : ''}${bBusy ? ' · กำลังอ่าน…' : ''} · เหลือรอรับในระบบ ${(LIST || []).length} ใบ</div>` : '';
+  $('bSend').disabled = bBusy || !ready;
+  $('bSend').textContent = bBusy ? 'รออ่านให้ครบก่อน…' : ready ? `✅ รับเช็ค ${ready} ใบ` : '✅ รับเช็ค';
+}
+async function bSendAll(){
+  const sess = load('cs_session'); if (!sess) return toLoginPage();
+  const go = BQ.filter(bReady); $('bN').innerHTML = '';
+  for (const it of go){
+    it.st = 'send'; bRender();
+    try {
+      let fixNote = '';
+      if (it.fixOn && it.fix){
+        const ch = {...it.fix}; if (ch.amt != null) ch.amt = +String(ch.amt).replace(/,/g, '');
+        const rf = await wf(WORKER + '/fix', {method: 'POST', headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'application/json'},
+          body: JSON.stringify({id: it.item.id, by: 'receive', changes: ch})});
+        const df = await rf.json().catch(() => ({}));
+        if (df.login){ store('cs_session', null); it.st = 'ready'; return toLoginPage(); }
+        if (!df.ok) throw new Error('แก้ข้อมูลไม่สำเร็จ: ' + (df.error || rf.status));
+        if (df.no) it.item.no = df.no;
+        fixNote = 'แก้ตามเช็คจริง ' + Object.keys(it.fix).length + ' ช่อง';
+      }
+      const r = await wf(WORKER + '/receive', {method: 'POST', body: it.blob, headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'image/jpeg',
+        'X-Fields': encodeURIComponent(JSON.stringify({no: it.item.no, ref: it.item.ref, reader: it.read.reader + ' · ถ่ายรวด · ' + (fixNote || (it.bad.length || it.na === 4 ? 'ไม่ตรง แต่คนรับยืนยันว่าข้อมูล AR ถูก' : 'ตรงกับที่ AR ส่ง'))}))}});
+      const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+      const d = await r.json().catch(() => ({}));
+      if (d.login){ store('cs_session', null); it.st = 'ready'; return toLoginPage(); }
+      if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      it.st = 'done'; LIST = LIST.filter(y => y !== it.item);
+    } catch(e){ it.st = 'fail'; it.err = e.message; }
+    bRender();
+  }
+  const ok = go.filter(x => x.st === 'done').length, bad = go.length - ok;
+  $('bN').innerHTML = `<div class="${bad ? 'warn' : 'good'}" style="margin-top:8px">${ok ? '✅ รับแล้ว ' + ok + ' ใบ · สถานะเปลี่ยนเป็น "รอนำฝาก" · ระบบแจ้งกลุ่ม ③ ให้แล้ว' : ''}${bad ? '<br>❌ ส่งไม่สำเร็จ ' + bad + ' ใบ · กด "รับเช็ค" อีกครั้ง' : ''}</div>` + (ok && ENV_EDITS ? '<p class="hint" style="margin-top:6px"><a href="#" data-aedit="">✏️ รับแล้วเพิ่งเห็นว่าข้อมูลผิด? แก้ได้จนกว่าจะนำฝาก</a></p>' : '');
+}
+$('bcam').addEventListener('change', e => { if (e.target.files.length) bAdd([...e.target.files]); e.target.value = ''; });
+$('bSend').addEventListener('click', bSendAll);
+$('bList').addEventListener('change', e => {
+  if (e.target.dataset.fv) return;
+  const k = +(e.target.dataset.pick || e.target.dataset.ok || 0), it = BQ.find(x => x.k === k); if (!it) return;
+  if (e.target.dataset.pick !== undefined){ it.item = (LIST || []).find(y => y.id === e.target.value) || null; it.how = 'pick'; it.ok = false; it.fixOn = false; it.fix = null; bCmp(it); }
+  else it.ok = e.target.checked;
+  bRender();
+});
+$('bList').addEventListener('input', e => {
+  const it = BQ.find(x => x.k === +e.target.dataset.fv); if (!it) return;
+  it.fix[e.target.dataset.f] = e.target.value;
+  const ready = BQ.filter(bReady).length; $('bSend').disabled = bBusy || !ready; $('bSend').textContent = ready ? `✅ รับเช็ค ${ready} ใบ` : '✅ รับเช็ค';
+});
+$('bList').addEventListener('click', e => {
+  if (e.target.dataset.fix){ const it = BQ.find(x => x.k === +e.target.dataset.fix); if (it){ bFixStart(it); bRender(); } return; }
+  if (e.target.dataset.fixoff){ e.preventDefault(); const it = BQ.find(x => x.k === +e.target.dataset.fixoff); if (it){ it.fixOn = false; it.fix = null; bRender(); } return; }
+  const del = e.target.dataset.del, z = e.target.dataset.zoom;
+  if (del){ const it = BQ.find(x => x.k === +del); if (it && (it.st !== 'read')) { BQ = BQ.filter(x => x !== it); bRender(); } }
+  if (z){ const it = BQ.find(x => x.k === +z); if (it) window.open(it.url, '_blank'); }
+});
+// ── ① คนส่งแก้ข้อมูลเช็คที่ส่งแล้ว (ก่อนการเงินรับ) → /fix by 'send' · เก็บค่าเดิม→ใหม่ใน Edit Log ──
+// ── แก้สิ่งที่ตัวเองส่งไปแล้ว จนกว่าขั้นถัดไปจะทำ (กฎ PO 19–20 พ.ย.) · เก็บค่าเดิม→ใหม่ใน Edit Log + แจ้งกลุ่ม ──
+//  ① คนส่ง (หน้าส่งเช็ค): ข้อมูลเช็ค ก่อนการเงินรับ → /fix by 'send'
+//  ② การเงินที่รับ (หน้ารับเช็ค): ข้อมูลเช็ค หลังรับ ก่อนนำฝาก → /fix by 'finance'
+//  ③ คนนำฝาก (หน้านำฝาก): ยอดตามใบ Pay-in · บัญชี · วันที่ ก่อน Treasury ยืนยัน → /fixdep
+const AM = MODE === 'receive' ? 'finance' : MODE === 'deposit' ? 'deposit' : 'send';
+const ATXT = {send: {stage: 'receive', link: '✏️ ส่งผิด / AI อ่านผิด? แก้ข้อมูลเช็คที่ส่งไปแล้ว (ได้จนกว่าการเงินจะรับ)', head: '✏️ แก้ข้อมูลเช็คที่ส่งไปแล้ว (ได้จนกว่าการเงินจะรับ)', what: 'เช็คที่การเงินยังไม่รับ', none: 'ไม่มีเช็คที่รอการเงินรับ · ถ้าการเงินรับแล้ว ให้การเงินแก้ หรือใช้ฟอร์มขอแก้ไข'},
+  finance: {stage: 'deposit', link: '✏️ รับแล้วแต่ข้อมูลผิด? แก้ข้อมูลเช็คที่ฉันรับ (ได้จนกว่าจะนำฝาก)', head: '✏️ แก้ข้อมูลเช็คที่ฉันรับแล้ว (ได้จนกว่าจะนำฝาก)', what: 'เช็คที่คุณรับแล้ว ยังไม่นำฝาก', none: 'ไม่มีเช็คที่คุณรับแล้วรอนำฝาก · ถ้านำฝากแล้ว ใช้ฟอร์มขอแก้ไข'},
+  deposit: {stage: 'confirm', link: '✏️ ส่งผิด / AI อ่านใบ Pay-in ผิด? แก้ใบนำฝากที่ส่งไปแล้ว (ได้จนกว่า Treasury จะยืนยัน)', head: '✏️ แก้ใบนำฝากที่ส่งไปแล้ว (ได้จนกว่า Treasury จะยืนยัน)', what: 'รอบนำฝากของคุณที่ Treasury ยังไม่ยืนยัน', none: 'ไม่มีรอบนำฝากของคุณที่รอ Treasury ยืนยัน · ถ้ายืนยันแล้ว แจ้ง Treasury'}}[AM];
+let AL = null, AI_ = null, APRE = '';
+async function aOpen(pre){
+  if (typeof pre === 'string') APRE = pre;
+  $('aEdit').style.display = 'block'; $('aEdit').querySelector('.step').textContent = ATXT.head; $('aForm').innerHTML = ''; $('aN').innerHTML = '';
+  if (!load('cs_session')){ $('aList').innerHTML = '<p>ล็อกอิน Lark ก่อน 1 ครั้ง</p><a class="btn" href="#" id="aLogin">เข้าสู่ระบบ Lark</a>'; $('aLogin').onclick = e => { e.preventDefault(); try { sessionStorage.setItem('cs_q', '?edit=1'); } catch(x){} toLoginPage(); }; return; }
+  $('aList').innerHTML = '<p class="hint">กำลังดึงรายการ…</p>';
+  let L;
+  try { L = await loadList(ATXT.stage, true); } catch(e){ $('aList').innerHTML = '<div class="warn">ดึงรายการไม่สำเร็จ: ' + esc(e.message) + '</div>'; return; }
+  if (!L){ $('aList').innerHTML = '<a class="btn" href="#" id="aLogin">เข้าสู่ระบบ Lark</a>'; $('aLogin').onclick = e => { e.preventDefault(); toLoginPage(); }; return; }
+  const me = load('cs_name') || '';
+  if (AM === 'send') AL = [...L].sort((a, b) => (!!b.mine || b.by === me) - (!!a.mine || a.by === me) || (b.at || 0) - (a.at || 0));
+  else if (AM === 'finance') AL = L.filter(x => x.mineRecv);
+  else { const B = {}; for (const x of L) if (x.batch && x.batch.mine && x.batchId) (B[x.batchId] = B[x.batchId] || {id: x.batchId, ...x.batch, cheques: []}).cheques.push(x); AL = Object.values(B); }
+  const opt = x => AM === 'deposit' ? `${esc(x.no)} · เช็ค ${x.cheques.map(c => esc(c.no)).join(', ')} · ใบ Pay-in ${fmt(x.total)} บาท${Math.abs(x.total - x.cheques.reduce((a, c) => a + c.amt, 0)) >= 0.005 ? ' · ⚠️ ยอดไม่ตรง' : ''}`
+    : `${esc(x.no)} · ${fmt(x.amt)} บาท · ${esc(shortBank(x.bank))}${AM === 'send' ? (x.mine || x.by === me ? ' · ของฉัน' : x.by ? ' · ' + esc(x.by) : '') : ''}`;
+  $('aList').innerHTML = AL.length ? `<label for="aPick">เลือกรายการที่จะแก้ (${ATXT.what} ${AL.length} รายการ)</label><select id="aPick"><option value="">— เลือก —</option>` +
+    AL.map(x => `<option value="${esc(x.id)}">${opt(x)}</option>`).join('') + '</select>' : `<p class="hint">${ATXT.none}</p>`;
+  if ($('aPick')){ $('aPick').onchange = aForm; const p = APRE && AL.find(x => x.no === APRE || x.ref === APRE || (x.cheques || []).some(c => c.no === APRE)); if (p){ $('aPick').value = p.id; aForm(); } }
+  $('aEdit').scrollIntoView({behavior: 'smooth'});
+}
+function aForm(){
+  AI_ = (AL || []).find(x => x.id === $('aPick').value); $('aN').innerHTML = '';
+  if (!AI_){ $('aForm').innerHTML = ''; return; }
+  const hist = AI_.edits ? `<p class="hint" style="white-space:pre-line;margin-top:8px">ประวัติการแก้:\n${esc(AI_.edits)}</p>` : '';
+  if (AM === 'deposit'){
+    const sum = AI_.cheques.reduce((a, c) => a + c.amt, 0);
+    const df = Math.round((AI_.total - sum) * 100) / 100;
+    $('aForm').innerHTML = (Math.abs(df) >= 0.005 ? `<div class="warn" style="margin-top:8px">⚠️ <b>ยอดไม่ตรง</b> · ใบ Pay-in ${fmt(AI_.total)} · เช็ค ${fmt(sum)} (ต่าง ${fmt(df)}) · ถ้า AI อ่านยอดผิด แก้ด้านล่างได้เลย</div>` : '') +
+      `<p class="hint" style="margin-top:8px">ยอดเช็คในรอบนี้ ${fmt(sum)} บาท · ดูยอดจริงจากใบ Pay-in ตัวจริง</p>` +
+      `<label>ยอดรวมตามใบ Pay-in (บาท)</label><input id="aTot" inputmode="decimal" value="${fmt(AI_.total)}">` +
+      `<label>ธนาคารที่นำฝาก</label><select id="aAcct">${ACCOUNTS.map(a => `<option ${a[0] === AI_.acct ? 'selected' : ''}>${esc(a[0])}</option>`).join('')}</select>` +
+      `<label>วันที่นำฝาก</label><input id="aDt" type="date" value="${bkkDate(AI_.date)}">` + hist +
+      `<button class="btn" id="aSave" style="margin-top:12px">💾 บันทึกการแก้</button>` +
+      `<p class="hint">ระบบเก็บค่าเดิมไว้ในประวัติ เทียบยอดใหม่ให้เอง และแจ้ง Treasury · ถ้าเลือกเช็คผิดใบ แจ้ง Treasury ให้ตีกลับ</p>`;
+  } else {
+    const banks = Object.values(BANKS).filter((b, i, a) => a.indexOf(b) === i && b !== BANK_OTHER);
+    $('aForm').innerHTML = `<label>เลขที่เช็ค</label><input id="aNo" inputmode="numeric" value="${esc(AI_.no)}">` +
+      `<label>จำนวนเงิน (บาท)</label><input id="aAmt" inputmode="decimal" value="${fmt(AI_.amt)}">` +
+      `<label>ธนาคาร</label><select id="aBank">${banks.map(b => `<option ${b === AI_.bank ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>` +
+      `<label>วันที่บนเช็ค</label><input id="aDt" type="date" value="${bkkDate(AI_.date)}">` + hist +
+      `<button class="btn" id="aSave" style="margin-top:12px">💾 บันทึกการแก้</button>` +
+      `<p class="hint">ระบบเก็บค่าเดิมไว้ในประวัติ และแจ้งกลุ่มให้ · ${AM === 'send' ? 'การเงินจะเห็นข้อมูลใหม่ตอนรับเช็ค' : 'ข้อมูลใหม่จะไปถึงขั้นนำฝากและ Treasury'}</p>`;
+  }
+  $('aSave').onclick = aSave;
+}
+async function aSave(){
+  const dep = AM === 'deposit';
+  const ch = dep ? {total: +$('aTot').value.replace(/[^\d.]/g, ''), acct: $('aAcct').value, date: $('aDt').value}
+    : {no: $('aNo').value.replace(/\D/g, ''), amt: +$('aAmt').value.replace(/,/g, ''), bank: $('aBank').value, date: $('aDt').value};
+  $('aSave').disabled = true; $('aSave').textContent = 'กำลังบันทึก…';
+  try {
+    const r = await wf(WORKER + (dep ? '/fixdep' : '/fix'), {method: 'POST', headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'application/json'},
+      body: JSON.stringify(dep ? {batch: AI_.id, changes: ch} : {id: AI_.id, by: AM, changes: ch})});
+    const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+    const d = await r.json().catch(() => ({}));
+    if (d.login){ store('cs_session', null); return toLoginPage(); }
+    if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    $('aN').innerHTML = d.changed ? '<div class="good" style="margin-top:8px">✅ บันทึกแล้ว · ' + esc(d.log.split(': ').slice(1).join(': ')) + '</div>' : '<div class="hint" style="margin-top:8px">ไม่มีช่องที่เปลี่ยน</div>';
+    if (d.changed){
+      const D = Date.UTC(+ch.date.slice(0, 4), +ch.date.slice(5, 7) - 1, +ch.date.slice(8, 10)) - 7 * 3600e3, E = (AI_.edits ? AI_.edits + '\n' : '') + d.log;
+      Object.assign(AI_, dep ? {total: ch.total, acct: ch.acct, date: D, edits: E} : {no: ch.no, amt: ch.amt, bank: ch.bank, date: D, edits: E});
+    }
+  } catch(e){ $('aN').innerHTML = '<div class="warn" style="margin-top:8px">❌ บันทึกไม่สำเร็จ: ' + esc(e.message) + '</div>'; }
+  finally { $('aSave').disabled = false; $('aSave').textContent = '💾 บันทึกการแก้'; }
+}
 const toLoginPage = () => { try { sessionStorage.setItem('cs_q', location.search); } catch(e){} location.href = WORKER + '/login?p=' + encodeURIComponent(location.pathname.split('/').pop() || 'index.html'); };
 async function initReceive(){
   document.title = 'รับเช็ค'; $('h1').textContent = '📷 รับเช็คจาก AR → เทียบ → รับ';
@@ -814,6 +1076,10 @@ async function initReceive(){
         ? `<div class="good" style="margin-bottom:10px">📌 <b>กำลังรับเช็คเลขที่ ${esc(PIN.no)}</b><br>${fmt(PIN.amt)} บาท · ${esc(shortBank(PIN.bank))}${PIN.payer ? ' · ' + esc(PIN.payer) : ''}<br><span class="hint">ส่งโดย ${esc(PIN.by || '—')}${PIN.dept ? ' · ' + esc(PIN.dept) : ''} · ${esc(PIN.ref)}</span></div>`
         : `<div class="warn">เช็คเลขที่ ${esc(qno)} ไม่อยู่ในรายการรอรับแล้ว (อาจรับไปแล้ว ถูกตีกลับ หรือยกเลิก) · ถ่ายเช็คที่ได้รับเพื่อหาจากรายการทั้งหมดได้</div>`;
     }
+    // ทุกครั้งใช้แบบถ่ายรวด (เปิดจากแจ้งเตือนของใบใดใบหนึ่งก็ถ่ายหลายใบได้ ระบบจับคู่เอง)
+    document.body.classList.add('batch'); $('bat').style.display = 'block';
+    if (PIN) $('bat').insertAdjacentHTML('afterbegin', $('target').innerHTML.replace('กำลังรับเช็คเลขที่', 'เปิดมาจากแจ้งเตือน: เช็คเลขที่') + '<p class="hint">ถ่ายเช็คใบนี้ หรือถ่ายหลายใบพร้อมกันก็ได้ ระบบจับคู่ให้เอง</p>');
+    bRender();
     const fq = new URLSearchParams(PIN ? {'prefill_เลขที่เช็ค': PIN.no} : {});
     $('rForm').href = FORMS.receive + (PIN ? '?' + fq.toString().replace(/\+/g, '%20') : '');
   } catch(e){ $('st').textContent = '❌ ดึงรายการไม่สำเร็จ: ' + e.message + ' · รีเฟรชหน้า'; }
@@ -823,6 +1089,13 @@ $('rOk').addEventListener('change', () => { $('rSend').disabled = !$('rOk').chec
 $('rSend').addEventListener('click', receiveSend);
 $('rAgain').addEventListener('click', () => { $('cam').value=''; $('cam').click(); });
 if (MODE === 'receive') initReceive();
+// ทางแก้สิ่งที่ส่งไปแล้ว: ลิงก์ท้ายหน้า ① ② ③ (ปุ่มเด่น) · ?edit=1 เปิดเลย (จากบอร์ด / การ์ดในแชท) · &q=เลขที่ เลือกรายการให้
+if (['send', 'receive', 'deposit'].includes(MODE) && WORKER){
+  document.querySelector('main').insertAdjacentHTML('beforeend', `<p style="text-align:center;margin:16px 0"><a href="#" id="aOpen" class="btn sec" style="font-size:15px">${ATXT.link}</a></p>`);
+  $('aOpen').onclick = e => { e.preventDefault(); aOpen(); };
+  if (/[?&]edit=1/.test(location.search)) setTimeout(() => aOpen(new URLSearchParams(location.search).get('q') || ''), 0);
+  document.addEventListener('click', e => { const a = e.target.closest('[data-aedit]'); if (a){ e.preventDefault(); aOpen(a.dataset.aedit); } });
+}
 if (MODE === 'send' && WORKER && !load('cs_session')) { $('aiHint').hidden = false; document.querySelector('label[for=cam]').classList.add('sec'); $('aiLogin').onclick = e => { e.preventDefault(); toLoginPage(); }; }
 
 // ── ③ นำฝาก: อ่านใบ Pay-in แล้วจับคู่กับเช็คที่รอนำฝาก (เทียบกับรายการ ไม่เดาเลขเอง) ──────────
@@ -955,6 +1228,7 @@ async function runPayin(url){
     $('st').textContent = 'อ่านใบ Pay-in ไม่สำเร็จ · ติ๊กเช็คและกรอกยอดเองด้านล่าง';
   }
   $('bar').style.display = 'none';
+  if (DCB) return DCB();
 }
 const depState = () => ({foundAll: Object.keys(FOUND_ALL).length, ticked: [...document.querySelectorAll('#dList input:checked')].map(i => (LIST.find(x => x.id === i.value) || {}).no),
   found: Object.keys(FOUND).length, total: $('dTotal').value, totalN: $('dTotalN').textContent, acct: $('dAcct').value, acctN: $('dAcctN').textContent,
@@ -1047,6 +1321,105 @@ async function depSend(){
   } finally { $('dSend').textContent = '🏦 ส่งนำฝาก'; if ($('dep').style.display !== 'none') depCheck();
   }
 }
+// ── ③ ถ่ายรวด: ถ่ายใบ Pay-in หลายใบ ไม่ต้องเรียง → อ่านทีละใบ (ตัวอ่านเดิม) → จับคู่เช็ค 1 ใบต่อใบ → ส่งครั้งเดียว ──
+let DCB = null, DQ = [], dBusy = false, dSeq = 0;
+const dNum = v => +String(v || '').replace(/[^\d.]/g, '');
+function dAdd(srcs){
+  for (const s of srcs) DQ.push({k: ++dSeq, url: typeof s === 'string' ? s : URL.createObjectURL(s), st: 'wait'});
+  dRender(); dPump();
+}
+async function dPump(){
+  if (dBusy) return; dBusy = true; dRender();
+  let it;
+  while ((it = DQ.find(x => x.st === 'wait'))){
+    it.st = 'read'; dRender();
+    const v = await new Promise(res => { DCB = () => res({pick: (document.querySelector('#dList input:checked') || {}).value || '', all: Object.keys(FOUND_ALL),
+      tot: [...PAYIN_TOT], total: $('dTotal').value, acct: $('dAcct').value, date: $('dDate').value, reader: readerName()}); run(it.url); });
+    DCB = null; it.read = v; it.blob = await photoBlob(); it.acct = v.acct; it.date = v.date; it.st = 'ready'; dMatch(it); dRender();
+  }
+  dBusy = false; $('st').textContent = ''; dRender();
+}
+// เช็คที่ตัวอ่านเลือกให้ ถ้าถูกใบ Pay-in อื่นใช้ไปแล้ว → หาใบอื่นในใบนี้ที่ยอดตรง
+function dMatch(it){
+  const used = new Set(DQ.filter(x => x !== it && x.item && x.st !== 'done').map(x => x.item.id)), L = (LIST || []).filter(x => !used.has(x.id));
+  const R = it.read, eq = (a, b) => Math.abs(a - b) < 0.005;
+  let x = L.find(y => y.id === R.pick) || null;
+  if (!x){ const c = L.filter(y => R.all.includes(y.id)); x = c.length === 1 ? c[0] : c.find(y => R.tot.some(v => eq(v, y.amt))) || null; }
+  it.item = x;
+  it.total = x && R.tot.length ? fmt(R.tot.find(v => eq(v, x.amt)) ?? Math.max(...R.tot)) : R.total || '';
+}
+const dOk = it => !!it.item && dNum(it.total) > 0 && Math.abs(dNum(it.total) - it.item.amt) < 0.005;
+const dReady = it => it.st === 'ready' && !!it.item && !!it.acct && dNum(it.total) > 0 && !!it.date;
+function dRender(){
+  if (MODE !== 'deposit') return;
+  const used = new Set(DQ.filter(x => x.item && x.st !== 'done').map(x => x.item.id));
+  $('dbList').innerHTML = DQ.map((it, i) => {
+    const x = it.item, R = it.read || {};
+    let st, form = '';
+    if (it.st === 'wait') st = '<span class="r-na">⏳ รอคิวอ่าน</span>';
+    else if (it.st === 'read') st = '<span class="r-na">🤖 กำลังอ่าน…</span>';
+    else if (it.st === 'send') st = '<span class="r-na">กำลังส่ง…</span>';
+    else if (it.st === 'done') st = '<span class="r-ok">✅ นำฝากแล้ว · ' + esc(x.no) + ' · ใบ Pay-in ' + esc(it.total) + ' บาท</span>';
+    else {
+      st = it.st === 'fail' ? '<span class="r-bad">❌ ส่งไม่สำเร็จ: ' + esc(it.err) + '</span> · กด "ส่งนำฝาก" อีกครั้ง<br>' : '';
+      const twin = !x && R.all ? DQ.findIndex(y => y !== it && y.item && R.all.includes(y.item.id)) : -1;
+      st += !x ? (twin >= 0 ? '<span class="r-bad">⚠️ เช็คในใบนี้ ถูกใช้กับใบ Pay-in ที่ ' + (twin + 1) + ' แล้ว</span><br><span class="hint">ถ่ายใบเดิมซ้ำหรือเปล่า? ถ้าซ้ำ กด ✕ เอาออก</span>'
+        : '<span class="r-bad">❓ ไม่พบเช็คที่รอนำฝากในใบนี้</span><br><span class="hint">เลือกเช็คเองด้านบน · หรือถ่ายใหม่ให้เห็นช่องเลขที่เช็คชัด</span>')
+        : (R.all && R.all.length > 1 ? '<span class="r-bad">⚠️ ใบนี้มีเลขที่เช็คหลายใบ</span> <span class="hint">(กฎ: 1 ใบ Pay-in ต่อเช็ค 1 ใบ · ตรวจว่าถ่ายถูกใบ)</span><br>' : '') +
+          (dOk(it) ? '<span class="r-ok">✅ ยอดในใบตรงกับเช็ค</span>' : dNum(it.total) > 0 ? '<span class="r-bad">⚠️ ยอดไม่ตรง</span> <span class="hint">เช็ค ' + fmt(x.amt) + ' · ใบ Pay-in ' + esc(it.total) + ' · ตรวจยอดในใบ ถ้าต่างจริง ส่งได้ ระบบจะแจ้งให้อธิบาย</span>' : '<span class="r-bad">⚠️ อ่านยอดในใบไม่ได้</span> · พิมพ์ยอดตามใบ Pay-in');
+      form = `<div class="hint" style="margin-top:6px">ยอดตามใบ Pay-in · บัญชีที่ฝาก · วันที่ฝาก</div><div class="dg"><input data-dv="${it.k}" data-f="total" value="${esc(it.total)}" inputmode="decimal" placeholder="ยอดตามใบ Pay-in" aria-label="ยอดตามใบ Pay-in (บาท)">` +
+        `<select data-dv="${it.k}" data-f="acct" aria-label="ธนาคารที่นำฝาก"><option value="">— ธนาคารที่ฝาก —</option>${ACCOUNTS.map(a => `<option ${a[0] === it.acct ? 'selected' : ''}>${esc(a[0])}</option>`).join('')}</select>` +
+        `<input data-dv="${it.k}" data-f="date" type="date" value="${esc(it.date)}" aria-label="วันที่นำฝาก"></div>`;
+    }
+    const pick = (it.st === 'ready' || it.st === 'fail') ? `<select data-dpick="${it.k}"><option value="">— เลือกเช็คในใบนี้ —</option>` +
+      (LIST || []).filter(y => y === x || !used.has(y.id)).map(y => `<option value="${esc(y.id)}" ${y === x ? 'selected' : ''}>${esc(y.no)} · ${fmt(y.amt)} บาท · ${esc(shortBank(y.bank))}</option>`).join('') + '</select>'
+      : x ? `<div style="font-weight:600">${esc(x.no)} · ${fmt(x.amt)} บาท</div>` : '';
+    return `<div class="brow ${it.st}"><img src="${esc(it.url)}" alt="ใบ Pay-in ที่ ${i + 1}" data-dzoom="${it.k}"><div class="bx"><div class="hint">ใบ Pay-in ที่ ${i + 1}</div>${pick}<div class="bs">${st}</div>${form}</div>` +
+      (it.st === 'done' || it.st === 'send' ? '' : `<button class="bdel" data-ddel="${it.k}" title="เอารูปนี้ออก">✕</button>`) + '</div>';
+  }).join('');
+  const ready = DQ.filter(dReady).length, done = DQ.filter(x => x.st === 'done').length, chk = DQ.filter(x => x.st === 'ready' && !dReady(x)).length, bad = DQ.filter(x => dReady(x) && !dOk(x)).length;
+  $('dbSum').innerHTML = DQ.length ? `<div class="hint" style="margin-top:8px">${DQ.length} ใบ · พร้อมส่ง ${ready}${bad ? ' (ยอดไม่ตรง ' + bad + ')' : ''} · ต้องตรวจ ${chk}${done ? ' · ส่งแล้ว ' + done : ''}${dBusy ? ' · กำลังอ่าน…' : ''} · เหลือรอนำฝากในระบบ ${(LIST || []).length} ใบ</div>` : '';
+  $('dbSend').disabled = dBusy || !ready;
+  $('dbSend').textContent = dBusy ? 'รออ่านให้ครบก่อน…' : ready ? `🏦 ส่งนำฝาก ${ready} ใบ` : '🏦 ส่งนำฝาก';
+}
+async function dSendAll(){
+  if (!load('cs_session')) return toLoginPage();
+  const go = DQ.filter(dReady); $('dbN').innerHTML = '';
+  for (const it of go){
+    it.st = 'send'; dRender();
+    try {
+      const R = it.read, ed = [[it.item.id !== R.pick, 'เช็คที่เลือก'], [it.total !== R.total, 'ยอดตามใบ Pay-in'], [it.acct !== R.acct, 'บัญชีที่ฝาก'], [it.date !== R.date, 'วันที่นำฝาก']].filter(e => e[0]).map(e => e[1]);
+      const f = {reader: R.reader + ' · ถ่ายรวด · ' + (ed.length ? 'คนแก้: ' + ed.join(', ') : 'ไม่ได้แก้'), acct: it.acct, nos: [it.item.no], ref: it.item.ref, total: dNum(it.total), date: it.date};
+      const r = await wf(WORKER + '/deposit', {method: 'POST', body: it.blob, headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'image/jpeg', 'X-Fields': encodeURIComponent(JSON.stringify(f))}});
+      const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+      const d = await r.json().catch(() => ({}));
+      if (d.login){ store('cs_session', null); it.st = 'ready'; return toLoginPage(); }
+      if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      it.st = 'done'; LIST = LIST.filter(y => y !== it.item);
+    } catch(e){ it.st = 'fail'; it.err = e.message; }
+    dRender();
+  }
+  const ok = go.filter(x => x.st === 'done').length, bad = go.length - ok;
+  $('dbN').innerHTML = `<div class="${bad ? 'warn' : 'good'}" style="margin-top:8px">${ok ? '✅ นำฝากแล้ว ' + ok + ' ใบ · สถานะเปลี่ยนเป็น "นำฝากแล้ว" · ระบบเทียบยอดและแจ้ง Treasury ให้แล้ว' : ''}${bad ? '<br>❌ ส่งไม่สำเร็จ ' + bad + ' ใบ · กด "ส่งนำฝาก" อีกครั้ง' : ''}</div>` + (ok && ENV_EDITS ? '<p class="hint" style="margin-top:6px"><a href="#" data-aedit="">✏️ ยอด / บัญชี / วันที่ผิด? แก้ได้จนกว่า Treasury จะยืนยัน</a></p>' : '');
+}
+$('dcam').addEventListener('change', e => { if (e.target.files.length) dAdd([...e.target.files]); e.target.value = ''; });
+$('dbSend').addEventListener('click', dSendAll);
+$('dbList').addEventListener('change', e => {
+  const k = +(e.target.dataset.dpick || e.target.dataset.dv || 0), it = DQ.find(x => x.k === k); if (!it) return;
+  if (e.target.dataset.dpick !== undefined){ it.item = (LIST || []).find(y => y.id === e.target.value) || null; if (it.item && !dNum(it.total)) it.total = ''; dRender(); }
+  else if (e.target.dataset.f !== 'total'){ it[e.target.dataset.f] = e.target.value; dRender(); }
+});
+$('dbList').addEventListener('input', e => {
+  const it = DQ.find(x => x.k === +e.target.dataset.dv); if (!it || e.target.dataset.f !== 'total') return;
+  it.total = e.target.value;
+  const ready = DQ.filter(dReady).length; $('dbSend').disabled = dBusy || !ready; $('dbSend').textContent = ready ? `🏦 ส่งนำฝาก ${ready} ใบ` : '🏦 ส่งนำฝาก';
+});
+$('dbList').addEventListener('focusout', e => { if (e.target.dataset.f === 'total') dRender(); });
+$('dbList').addEventListener('click', e => {
+  const del = e.target.dataset.ddel, z = e.target.dataset.dzoom;
+  if (del){ const it = DQ.find(x => x.k === +del); if (it && it.st !== 'read'){ DQ = DQ.filter(x => x !== it); DQ.filter(x => x.st === 'ready' && !x.item).forEach(dMatch); dRender(); } }
+  if (z){ const it = DQ.find(x => x.k === +z); if (it) window.open(it.url, '_blank'); }
+});
 async function initDeposit(){
   document.title = 'นำฝากเช็ค'; $('h1').textContent = '🏦 นำฝากเช็ค → ถ่ายใบ Pay-in';
   $('camHint').innerHTML = 'ฝากเช็คที่ธนาคารแล้ว ถ่าย<b>ใบ Pay-in</b> ให้เต็มจอ เห็นช่องเลขที่เช็คและยอดรวมชัด · ระบบจะติ๊กเช็คที่อยู่ในใบให้';
@@ -1064,6 +1437,8 @@ async function initDeposit(){
     if (!LIST){ $('loginBox').style.display = 'block'; $('st').textContent = ''; return; }
     $('st').textContent = 'รอนำฝาก ' + LIST.length + ' ใบ' + (load('cs_name') ? ' · ' + load('cs_name') : '');
     if (!PAYIN){ FOUND = {}; FOUND_ALL = {}; $('dep').style.display = 'block'; $('dBanner').innerHTML = ''; renderDepList(); $('dTotal').value = ''; $('dDate').value = todayISO(); }
+    // ทุกครั้งใช้แบบถ่ายรวด (ใบเดียวก็ได้) · ตัวอ่านใบ Pay-in ตัวเดิมทำงานเบื้องหลัง
+    $('loginBox').style.display = 'none'; document.body.classList.add('batch'); $('dbat').style.display = 'block'; $('dbForm').href = FORMS.deposit; dRender();
   } catch(e){ $('st').textContent = '❌ ดึงรายการไม่สำเร็จ: ' + e.message + ' · รีเฟรชหน้า'; }
 }
 // เลือกได้ใบเดียว (1 ใบ Pay-in = เช็ค 1 ใบ)
@@ -1104,12 +1479,20 @@ function cfmCard(x){
       ${x.receipt && x.receipt.length ? '<figure><img data-k="rcp" alt="รูปเช็คตอนการเงินรับ"><figcaption>รูปเช็ค (การเงินถ่ายตอนรับ)</figcaption></figure>' : ''}
     </div>
     <table class="cmp">${rows.map(r => `<tr><td style="width:38%">${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>
+    ${ENV_EDITS && x.batchId ? `<a href="#" class="cFixBtn" style="display:inline-block;margin-top:8px;font-weight:600">✏️ ใบ Pay-in ถูก แต่ระบบอ่านผิด? แก้ยอด / บัญชี / วันที่</a>
+    <div class="cFix" hidden><label>ยอดรวมตามใบ Pay-in (บาท)</label><input class="cTot" inputmode="decimal" value="${fmt(b.total || 0)}">
+      <label>ธนาคารที่นำฝาก</label><select class="cAcct">${ACCOUNTS.map(a => `<option ${a[0] === b.acct ? 'selected' : ''}>${esc(a[0])}</option>`).join('')}</select>
+      <label>วันที่นำฝาก</label><input class="cDt" type="date" value="${bkkDate(b.date)}">
+      <button class="btn sec cFixSave" style="margin-top:10px">💾 บันทึกตามใบ Pay-in จริง</button>
+      <p class="hint">ระบบเก็บค่าเดิมไว้ในประวัติ เทียบยอดใหม่ และแจ้งกลุ่ม · แล้วค่อยกด "เงินเข้าแล้ว"</p><div class="cFixN"></div></div>
+    ${b.edits ? `<p class="hint" style="white-space:pre-line">ประวัติการแก้ใบนำฝาก:\n${esc(b.edits)}</p>` : ''}` : ''}
     <p class="hint" style="margin-top:10px">เทียบกับรายการเงินเข้าในระบบธนาคาร (ยอด · วันที่ · บัญชี) แล้วค่อยกดยืนยัน</p>
     ${self ? '<div class="warn">คุณเป็นคนนำฝากรายการนี้ · ยืนยันเองได้เฉพาะ Admin · ถ้าไม่ใช่ Admin ระบบจะปฏิเสธ ให้ Treasury อีกคนยืนยัน</div>' : ''}
     <label>อ้างอิง Statement (ไม่บังคับ)</label><input class="cStmt" autocomplete="off" placeholder="เช่น เลขรายการในระบบธนาคาร">
     <button class="btn cOk" style="margin-top:12px">✅ เงินเข้าแล้ว</button>
     <div class="cN"></div>
     <a class="btn sec" target="_blank" rel="noopener" href="${RETURN_FORM}?${q.toString().replace(/\+/g, '%20')}">🔴 เช็คคืน / เงินไม่เข้า</a>
+    <p class="hint">กด 🔴 เฉพาะเมื่อธนาคารคืนเช็คหรือเงินไม่เข้าจริง · ถ้าแค่ข้อมูลผิด ใช้ "✏️ แก้" ด้านบน (เลขที่เช็คผิด ใช้ฟอร์มขอแก้ไข)</p>
   </div>`;
 }
 function renderConfirm(items){
@@ -1122,6 +1505,28 @@ function renderConfirm(items){
     const r = c.querySelector('[data-k=rcp]'); if (r) loadImg(r, x.receipt[0]);
     c.querySelectorAll('img').forEach(i => i.addEventListener('click', () => i.classList.toggle('big')));
     c.querySelector('.cOk').addEventListener('click', () => confirmSend(x, c));
+    const fb = c.querySelector('.cFixBtn'); if (fb){ fb.onclick = e => { e.preventDefault(); c.querySelector('.cFix').hidden = !c.querySelector('.cFix').hidden; }; c.querySelector('.cFixSave').onclick = () => cfmFix(x, c, items); }
+  }
+}
+// ④ Treasury แก้ใบนำฝากตามใบจริง (OCR อ่านผิด) → /fixdep · ตัวกลางเช็คบทบาทจากตาราง Staff & Roles
+async function cfmFix(x, c, items){
+  const btn = c.querySelector('.cFixSave'), n = c.querySelector('.cFixN');
+  const ch = {total: +c.querySelector('.cTot').value.replace(/[^\d.]/g, ''), acct: c.querySelector('.cAcct').value, date: c.querySelector('.cDt').value};
+  btn.disabled = true; btn.textContent = 'กำลังบันทึก…'; n.innerHTML = '';
+  try {
+    const r = await wf(WORKER + '/fixdep', {method: 'POST', headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'application/json'}, body: JSON.stringify({batch: x.batchId, changes: ch})});
+    const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+    const d = await r.json().catch(() => ({}));
+    if (d.login){ store('cs_session', null); return toLoginPage(); }
+    if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    if (d.changed){
+      const D = Date.UTC(+ch.date.slice(0, 4), +ch.date.slice(5, 7) - 1, +ch.date.slice(8, 10)) - 7 * 3600e3;
+      for (const y of items) if (y.batchId === x.batchId) Object.assign(y.batch, {total: ch.total, acct: ch.acct, date: D, edits: (y.batch.edits ? y.batch.edits + '\n' : '') + d.log});
+      renderConfirm(items);
+      const c2 = $('cList').querySelector(`[data-id="${CSS.escape(x.id)}"]`); c2.querySelector('.cN').innerHTML = '<div class="good" style="margin-top:8px">✅ แก้แล้ว · ' + esc(d.log.split(': ').slice(1).join(': ')) + '</div>';
+      c2.scrollIntoView({behavior: 'smooth'});
+    } else n.innerHTML = '<div class="hint">ไม่มีช่องที่เปลี่ยน</div>';
+  } catch(e){ n.innerHTML = '<div class="warn" style="margin-top:8px">❌ บันทึกไม่สำเร็จ: ' + esc(e.message) + '</div>'; btn.disabled = false; btn.textContent = '💾 บันทึกตามใบ Pay-in จริง';
   }
 }
 async function confirmSend(x, c){
@@ -1154,8 +1559,55 @@ async function initConfirm(){
   } catch(e){ $('cList').innerHTML = '<div class="warn">❌ ดึงรายการไม่สำเร็จ: ' + esc(e.message) + ' · รีเฟรชหน้า</div>'; $('cfm').style.display = 'block'; }
 }
 if (MODE === 'confirm') initConfirm();
+// ── 📋 บอร์ดงานเช็ค (Kanban): ทุกขั้นในหน้าเดียว · เก่าสุดก่อน · ค้าง ≥ 2 วันขึ้นแดง · กดการ์ด → ไปหน้าทำงานของขั้นนั้น ──
+const KCOL = [
+  {st: 'receive', h: '② รอการเงินรับ', who: 'การเงิน', go: 'receive', btn: '📷 ไปถ่ายรับเช็ค'},
+  {st: 'deposit', h: '③ รอนำฝาก', who: 'การเงิน', go: 'deposit', btn: '🏦 ไปถ่ายใบ Pay-in'},
+  {st: 'confirm', h: '④ รอ Treasury ยืนยันเงินเข้า', who: 'Treasury', go: 'confirm', btn: '💰 ไปตรวจและยืนยัน'}];
+const KTABS = [['all', 'ทั้งหมด'], ['receive', '② รอรับ'], ['deposit', '③ รอนำฝาก'], ['confirm', '④ รอยืนยัน'], ['mine', '👤 เช็คที่ฉันส่ง']];
+let KD = {}, KTAB = new URLSearchParams(location.search).get('tab') || 'all';
+const kAge = ms => ms ? Math.floor((Date.now() - ms) / 864e5) : null;
+const kPage = go => { const b = /beta/.test(location.pathname); return /scan\.html$/.test(location.pathname) ? 'scan.html?m=' + go + '&' : go === 'send' ? (b ? 'beta.html?' : 'index.html?') : (b ? 'beta-' : '') + go + '.html?'; };
+function kRender(){
+  if (!KTABS.some(t => t[0] === KTAB)) KTAB = 'all';
+  $('kTabs').innerHTML = KTABS.map(([k, n]) => `<button data-tab="${k}" class="${k === KTAB ? 'on' : ''}">${n}${k === 'all' || k === 'mine' ? '' : ' ' + (KD[k] || []).length}</button>`).join('');
+  const q = $('kQ').value.trim().toLowerCase(), me = load('cs_name') || '';
+  const hit = x => !q || [x.no, x.ref, x.payer, x.by, x.dept].some(v => String(v || '').toLowerCase().includes(q));
+  let n = 0, late = 0;
+  $('kCols').innerHTML = KCOL.filter(c => KTAB === 'all' || KTAB === 'mine' || KTAB === c.st).map(c => {
+    const L = (KD[c.st] || []).filter(x => hit(x) && (KTAB !== 'mine' || x.mine || (me && x.by === me)));
+    n += L.length;
+    return `<div class="col"><h2>${c.h} <span class="hint">(${L.length})</span></h2>` + (L.length ? L.map(x => {
+      const a = kAge(x.at), bad = a != null && a >= 2; if (bad) late++;
+      const link = kPage(c.go) + (c.st === 'confirm' ? 'q=' + encodeURIComponent(x.ref || x.no) : 'no=' + encodeURIComponent(x.no) + '&ref=' + encodeURIComponent(x.ref || ''));
+      return `<div class="kc${bad ? ' late' : ''}"><b>${esc(x.no)}</b> · ${fmt(x.amt)} บาท · ${esc(shortBank(x.bank))}<br>` +
+        `<span class="hint">${esc(x.payer || '—')} · ส่งโดย ${esc(x.by || '—')}${x.dept ? ' · ' + esc(x.dept) : ''} · ${esc(x.ref || '')}</span><br>` +
+        (a == null ? '' : bad ? `<span class="late-t">⏰ ค้าง ${a} วัน (นับจากวันที่ส่งเข้าระบบ)</span>` : `<span class="hint">ส่งเข้าระบบ${a ? ' ' + a + ' วันก่อน' : 'วันนี้'}</span>`) +
+        (x.edits || (x.batch && x.batch.edits) ? `<br><span class="hint">✏️ มีการแก้ข้อมูล</span>` : '') +
+        (ENV_EDITS && (c.st === 'receive' ? x.mine : c.st === 'deposit' ? x.mineRecv : x.batch && x.batch.mine)
+          ? `<br><a class="go" href="${kPage({receive: 'send', deposit: 'receive', confirm: 'deposit'}[c.st])}edit=1&q=${encodeURIComponent(x.no)}">✏️ แก้ที่ฉันส่งไป</a> <span class="hint">(ได้จนกว่าขั้นถัดไปจะทำ)</span>` : '') +
+        `<br><a class="go" href="${link}">${c.btn} →</a> <span class="hint">(${c.who})</span></div>`;
+    }).join('') : '<p class="hint">ไม่มีงานค้าง 🎉</p>') + '</div>';
+  }).join('');
+  $('kSum').textContent = `${n} ใบ${late ? ' · ค้างเกิน 2 วัน ' + late + ' ใบ (สีแดง)' : ''} · อัปเดต ${new Date().toLocaleTimeString('th-TH', {hour: '2-digit', minute: '2-digit'})}` + (KTAB === 'mine' && !me ? ' · ล็อกอินใหม่เพื่อแสดงชื่อ' : '');
+}
+async function initBoard(){
+  document.title = 'บอร์ดงานเช็ค'; $('h1').textContent = '📋 บอร์ดงานเช็ค · ใบไหนอยู่ขั้นไหน';
+  document.querySelector('main > .card').style.display = 'none';
+  $('loginBtn').onclick = toLoginPage;
+  $('loginBox').querySelector('p').textContent = 'เข้าสู่ระบบ Lark ก่อน 1 ครั้ง เพื่อดูเช็คทุกขั้น';
+  if (!load('cs_session')){ $('loginBox').style.display = 'block'; return; }
+  $('board').style.display = 'block'; $('kSum').textContent = 'กำลังดึงรายการ…';
+  try {
+    for (const c of KCOL){ await loadList(c.st); if (!LIST){ $('board').style.display = 'none'; $('loginBox').style.display = 'block'; return; } KD[c.st] = LIST; }
+    kRender();
+  } catch(e){ $('kSum').innerHTML = '<span class="r-bad">❌ ดึงรายการไม่สำเร็จ: ' + esc(e.message) + ' · รีเฟรชหน้า</span>'; }
+}
+$('kTabs').addEventListener('click', e => { const t = e.target.dataset.tab; if (!t) return; KTAB = t; history.replaceState(null, '', '?' + new URLSearchParams({...Object.fromEntries(new URLSearchParams(location.search)), tab: t})); kRender(); });
+$('kQ').addEventListener('input', kRender);
+if (MODE === 'board') initBoard();
 
-$('next').addEventListener('click', () => { $('done').style.display = 'none'; $('cam').value=''; $('pv').style.display='none'; $('st').textContent=''; window.scrollTo(0,0); $('cam').click(); });
+$('next').addEventListener('click', () => { $('doneEdit').hidden = true; $('done').style.display = 'none'; $('cam').value=''; $('pv').style.display='none'; $('st').textContent=''; window.scrollTo(0,0); $('cam').click(); });
 </script>
 </body>
 </html>
