@@ -1479,12 +1479,20 @@ function cfmCard(x){
       ${x.receipt && x.receipt.length ? '<figure><img data-k="rcp" alt="รูปเช็คตอนการเงินรับ"><figcaption>รูปเช็ค (การเงินถ่ายตอนรับ)</figcaption></figure>' : ''}
     </div>
     <table class="cmp">${rows.map(r => `<tr><td style="width:38%">${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>
+    ${ENV_EDITS && x.batchId ? `<a href="#" class="cFixBtn" style="display:inline-block;margin-top:8px;font-weight:600">✏️ ใบ Pay-in ถูก แต่ระบบอ่านผิด? แก้ยอด / บัญชี / วันที่</a>
+    <div class="cFix" hidden><label>ยอดรวมตามใบ Pay-in (บาท)</label><input class="cTot" inputmode="decimal" value="${fmt(b.total || 0)}">
+      <label>ธนาคารที่นำฝาก</label><select class="cAcct">${ACCOUNTS.map(a => `<option ${a[0] === b.acct ? 'selected' : ''}>${esc(a[0])}</option>`).join('')}</select>
+      <label>วันที่นำฝาก</label><input class="cDt" type="date" value="${bkkDate(b.date)}">
+      <button class="btn sec cFixSave" style="margin-top:10px">💾 บันทึกตามใบ Pay-in จริง</button>
+      <p class="hint">ระบบเก็บค่าเดิมไว้ในประวัติ เทียบยอดใหม่ และแจ้งกลุ่ม · แล้วค่อยกด "เงินเข้าแล้ว"</p><div class="cFixN"></div></div>
+    ${b.edits ? `<p class="hint" style="white-space:pre-line">ประวัติการแก้ใบนำฝาก:\n${esc(b.edits)}</p>` : ''}` : ''}
     <p class="hint" style="margin-top:10px">เทียบกับรายการเงินเข้าในระบบธนาคาร (ยอด · วันที่ · บัญชี) แล้วค่อยกดยืนยัน</p>
     ${self ? '<div class="warn">คุณเป็นคนนำฝากรายการนี้ · ยืนยันเองได้เฉพาะ Admin · ถ้าไม่ใช่ Admin ระบบจะปฏิเสธ ให้ Treasury อีกคนยืนยัน</div>' : ''}
     <label>อ้างอิง Statement (ไม่บังคับ)</label><input class="cStmt" autocomplete="off" placeholder="เช่น เลขรายการในระบบธนาคาร">
     <button class="btn cOk" style="margin-top:12px">✅ เงินเข้าแล้ว</button>
     <div class="cN"></div>
     <a class="btn sec" target="_blank" rel="noopener" href="${RETURN_FORM}?${q.toString().replace(/\+/g, '%20')}">🔴 เช็คคืน / เงินไม่เข้า</a>
+    <p class="hint">กด 🔴 เฉพาะเมื่อธนาคารคืนเช็คหรือเงินไม่เข้าจริง · ถ้าแค่ข้อมูลผิด ใช้ "✏️ แก้" ด้านบน (เลขที่เช็คผิด ใช้ฟอร์มขอแก้ไข)</p>
   </div>`;
 }
 function renderConfirm(items){
@@ -1497,6 +1505,28 @@ function renderConfirm(items){
     const r = c.querySelector('[data-k=rcp]'); if (r) loadImg(r, x.receipt[0]);
     c.querySelectorAll('img').forEach(i => i.addEventListener('click', () => i.classList.toggle('big')));
     c.querySelector('.cOk').addEventListener('click', () => confirmSend(x, c));
+    const fb = c.querySelector('.cFixBtn'); if (fb){ fb.onclick = e => { e.preventDefault(); c.querySelector('.cFix').hidden = !c.querySelector('.cFix').hidden; }; c.querySelector('.cFixSave').onclick = () => cfmFix(x, c, items); }
+  }
+}
+// ④ Treasury แก้ใบนำฝากตามใบจริง (OCR อ่านผิด) → /fixdep · ตัวกลางเช็คบทบาทจากตาราง Staff & Roles
+async function cfmFix(x, c, items){
+  const btn = c.querySelector('.cFixSave'), n = c.querySelector('.cFixN');
+  const ch = {total: +c.querySelector('.cTot').value.replace(/[^\d.]/g, ''), acct: c.querySelector('.cAcct').value, date: c.querySelector('.cDt').value};
+  btn.disabled = true; btn.textContent = 'กำลังบันทึก…'; n.innerHTML = '';
+  try {
+    const r = await wf(WORKER + '/fixdep', {method: 'POST', headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'application/json'}, body: JSON.stringify({batch: x.batchId, changes: ch})});
+    const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
+    const d = await r.json().catch(() => ({}));
+    if (d.login){ store('cs_session', null); return toLoginPage(); }
+    if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    if (d.changed){
+      const D = Date.UTC(+ch.date.slice(0, 4), +ch.date.slice(5, 7) - 1, +ch.date.slice(8, 10)) - 7 * 3600e3;
+      for (const y of items) if (y.batchId === x.batchId) Object.assign(y.batch, {total: ch.total, acct: ch.acct, date: D, edits: (y.batch.edits ? y.batch.edits + '\n' : '') + d.log});
+      renderConfirm(items);
+      const c2 = $('cList').querySelector(`[data-id="${CSS.escape(x.id)}"]`); c2.querySelector('.cN').innerHTML = '<div class="good" style="margin-top:8px">✅ แก้แล้ว · ' + esc(d.log.split(': ').slice(1).join(': ')) + '</div>';
+      c2.scrollIntoView({behavior: 'smooth'});
+    } else n.innerHTML = '<div class="hint">ไม่มีช่องที่เปลี่ยน</div>';
+  } catch(e){ n.innerHTML = '<div class="warn" style="margin-top:8px">❌ บันทึกไม่สำเร็จ: ' + esc(e.message) + '</div>'; btn.disabled = false; btn.textContent = '💾 บันทึกตามใบ Pay-in จริง';
   }
 }
 async function confirmSend(x, c){
