@@ -207,12 +207,14 @@ a.btn{text-decoration:none;margin-top:8px}
   <div style="font-size:20px;font-weight:700;color:var(--ok)" id="doneH">✅ ส่งเช็คแล้ว</div>
   <p id="doneT"></p>
   <p class="hint" id="doneHint">ระบบจะแจ้งในแชท Lark เหมือนส่งจากฟอร์ม · นำเช็คตัวจริงไปให้การเงินภายในวันนี้</p>
+  <a href="#" class="btn sec" id="doneEdit" hidden style="margin-bottom:8px">✏️ AI อ่านผิด / ส่งผิด? แก้ใบนี้</a>
   <button class="btn" id="next">สแกนใบต่อไป</button>
 </div>
 </main>
 
 <script>
 let ENV = 'dev';   // tools/build.py ตั้งเป็น 'dev' ในหน้า beta-*.html → ทุกอย่างไป Base Dev
+const ENV_EDITS = true;   // ทางแก้สิ่งที่ส่งไปแล้ว (ตัวกลางเปิดเฉพาะที่ EDITS=1 · Prod เปิดตอน Deploy ตาม docs/deploy_round1.md)
 const SH = 'https://ujpzitc70et6.jp.larksuite.com/share/base/';
 const SHARES = {
   prod: {send: 'shrjp6g61h7CZF2e2UDsTKzDwAg', receive: 'shrjpwYxMAQCI7Xe1gMFYhScXYc', deposit: 'shrjpmiIoJTxsTFi0x6cHfQHwVe', reject: 'shrjp4QheY69rQIuGrJh1KxmAHf', ret: 'shrjpIuSiIbJ3R5pdIci5IDmyge'},
@@ -702,6 +704,7 @@ async function send(){
     if (d.name) store('cs_name', d.name);
     $('review').style.display = 'none'; $('done').style.display = 'block';
     $('doneT').textContent = 'เลขที่เช็ค ' + f.no + ' · ' + fmt(f.amt) + ' บาท' + (d.name ? ' · ส่งในชื่อ ' + d.name : '');
+    if (ENV_EDITS){ $('doneEdit').hidden = false; $('doneEdit').dataset.aedit = f.no; }
     if (d.mode === 'no-photo') $('doneT').textContent += ' · ⚠️ ส่งข้อมูลแล้ว แต่แนบรูปไม่สำเร็จ แจ้งแพต';
     $('done').scrollIntoView({behavior:'smooth'});
   } catch(e){
@@ -748,17 +751,18 @@ const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;
 const bkkDate = ms => ms ? new Date(+ms + 7*3600e3).toISOString().slice(0,10) : '';
 const thDate = iso => iso ? iso.slice(8,10) + '/' + iso.slice(5,7) + '/' + (+iso.slice(0,4) + 543) : '';
 const shortBank = b => (String(b).match(/\(([^)]+)\)\s*$/) || [,''])[1] || b;
-async function loadList(stage){
+async function loadList(stage, keep = false){   // keep = ไม่แตะ LIST (รายการที่หน้านี้กำลังใช้) เช่น ตอนเปิดแผงแก้ข้อมูล
+  const set = v => { if (!keep) LIST = v; return v; };
   const sess = load('cs_session');
-  if (!sess){ LIST = null; return null; }
+  if (!sess) return set(null);
   const r = await wf(WORKER + '/list', {method: 'POST', headers: {'Authorization': 'Bearer ' + sess, 'Content-Type': 'application/json'}, body: JSON.stringify({stage})});
   const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
   const d = await r.json().catch(() => ({}));
-  if (d.login){ store('cs_session', null); LIST = null; return null; }
+  if (d.login){ store('cs_session', null); return set(null); }
   if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
   if (d.name) store('cs_name', d.name);
   // เก่าสุดก่อน (ส่งมาก่อน รับก่อน)
-  LIST = d.items.sort((a, b) => (a.at||0) - (b.at||0)); return LIST;
+  return set(d.items.sort((a, b) => (a.at||0) - (b.at||0)));
 }
 // หาเช็คในรายการที่ตรงกับที่อ่านได้: เลขที่ตรง → เลขต่าง 1 หลัก → ยอดเงินตรงใบเดียว
 function matchCheque(no, amt, L = LIST || []){
@@ -952,7 +956,7 @@ async function bSendAll(){
     bRender();
   }
   const ok = go.filter(x => x.st === 'done').length, bad = go.length - ok;
-  $('bN').innerHTML = `<div class="${bad ? 'warn' : 'good'}" style="margin-top:8px">${ok ? '✅ รับแล้ว ' + ok + ' ใบ · สถานะเปลี่ยนเป็น "รอนำฝาก" · ระบบแจ้งกลุ่ม ③ ให้แล้ว' : ''}${bad ? '<br>❌ ส่งไม่สำเร็จ ' + bad + ' ใบ · กด "รับเช็ค" อีกครั้ง' : ''}</div>`;
+  $('bN').innerHTML = `<div class="${bad ? 'warn' : 'good'}" style="margin-top:8px">${ok ? '✅ รับแล้ว ' + ok + ' ใบ · สถานะเปลี่ยนเป็น "รอนำฝาก" · ระบบแจ้งกลุ่ม ③ ให้แล้ว' : ''}${bad ? '<br>❌ ส่งไม่สำเร็จ ' + bad + ' ใบ · กด "รับเช็ค" อีกครั้ง' : ''}</div>` + (ok && ENV_EDITS ? '<p class="hint" style="margin-top:6px"><a href="#" data-aedit="">✏️ รับแล้วเพิ่งเห็นว่าข้อมูลผิด? แก้ได้จนกว่าจะนำฝาก</a></p>' : '');
 }
 $('bcam').addEventListener('change', e => { if (e.target.files.length) bAdd([...e.target.files]); e.target.value = ''; });
 $('bSend').addEventListener('click', bSendAll);
@@ -976,44 +980,76 @@ $('bList').addEventListener('click', e => {
   if (z){ const it = BQ.find(x => x.k === +z); if (it) window.open(it.url, '_blank'); }
 });
 // ── ① คนส่งแก้ข้อมูลเช็คที่ส่งแล้ว (ก่อนการเงินรับ) → /fix by 'send' · เก็บค่าเดิม→ใหม่ใน Edit Log ──
-let AL = null, AI_ = null;
-async function aOpen(){
-  $('aEdit').style.display = 'block'; $('aForm').innerHTML = ''; $('aN').innerHTML = '';
+// ── แก้สิ่งที่ตัวเองส่งไปแล้ว จนกว่าขั้นถัดไปจะทำ (กฎ PO 19–20 พ.ย.) · เก็บค่าเดิม→ใหม่ใน Edit Log + แจ้งกลุ่ม ──
+//  ① คนส่ง (หน้าส่งเช็ค): ข้อมูลเช็ค ก่อนการเงินรับ → /fix by 'send'
+//  ② การเงินที่รับ (หน้ารับเช็ค): ข้อมูลเช็ค หลังรับ ก่อนนำฝาก → /fix by 'finance'
+//  ③ คนนำฝาก (หน้านำฝาก): ยอดตามใบ Pay-in · บัญชี · วันที่ ก่อน Treasury ยืนยัน → /fixdep
+const AM = MODE === 'receive' ? 'finance' : MODE === 'deposit' ? 'deposit' : 'send';
+const ATXT = {send: {stage: 'receive', link: '✏️ ส่งผิด / AI อ่านผิด? แก้ข้อมูลเช็คที่ส่งไปแล้ว (ได้จนกว่าการเงินจะรับ)', head: '✏️ แก้ข้อมูลเช็คที่ส่งไปแล้ว (ได้จนกว่าการเงินจะรับ)', what: 'เช็คที่การเงินยังไม่รับ', none: 'ไม่มีเช็คที่รอการเงินรับ · ถ้าการเงินรับแล้ว ให้การเงินแก้ หรือใช้ฟอร์มขอแก้ไข'},
+  finance: {stage: 'deposit', link: '✏️ รับแล้วแต่ข้อมูลผิด? แก้ข้อมูลเช็คที่ฉันรับ (ได้จนกว่าจะนำฝาก)', head: '✏️ แก้ข้อมูลเช็คที่ฉันรับแล้ว (ได้จนกว่าจะนำฝาก)', what: 'เช็คที่คุณรับแล้ว ยังไม่นำฝาก', none: 'ไม่มีเช็คที่คุณรับแล้วรอนำฝาก · ถ้านำฝากแล้ว ใช้ฟอร์มขอแก้ไข'},
+  deposit: {stage: 'confirm', link: '✏️ ส่งผิด / AI อ่านใบ Pay-in ผิด? แก้ใบนำฝากที่ส่งไปแล้ว (ได้จนกว่า Treasury จะยืนยัน)', head: '✏️ แก้ใบนำฝากที่ส่งไปแล้ว (ได้จนกว่า Treasury จะยืนยัน)', what: 'รอบนำฝากของคุณที่ Treasury ยังไม่ยืนยัน', none: 'ไม่มีรอบนำฝากของคุณที่รอ Treasury ยืนยัน · ถ้ายืนยันแล้ว แจ้ง Treasury'}}[AM];
+let AL = null, AI_ = null, APRE = '';
+async function aOpen(pre){
+  if (typeof pre === 'string') APRE = pre;
+  $('aEdit').style.display = 'block'; $('aEdit').querySelector('.step').textContent = ATXT.head; $('aForm').innerHTML = ''; $('aN').innerHTML = '';
   if (!load('cs_session')){ $('aList').innerHTML = '<p>ล็อกอิน Lark ก่อน 1 ครั้ง</p><a class="btn" href="#" id="aLogin">เข้าสู่ระบบ Lark</a>'; $('aLogin').onclick = e => { e.preventDefault(); try { sessionStorage.setItem('cs_q', '?edit=1'); } catch(x){} toLoginPage(); }; return; }
-  $('aList').innerHTML = '<p class="hint">กำลังดึงเช็คที่รอการเงินรับ…</p>';
-  try { AL = await loadList('receive'); } catch(e){ $('aList').innerHTML = '<div class="warn">ดึงรายการไม่สำเร็จ: ' + esc(e.message) + '</div>'; return; }
-  if (!AL){ $('aList').innerHTML = '<a class="btn" href="#" id="aLogin">เข้าสู่ระบบ Lark</a>'; $('aLogin').onclick = e => { e.preventDefault(); toLoginPage(); }; return; }
-  const me = load('cs_name') || '', L = [...AL].sort((a, b) => (b.by === me) - (a.by === me) || (b.at || 0) - (a.at || 0));
-  $('aList').innerHTML = L.length ? '<label for="aPick">เลือกเช็คที่จะแก้ (' + L.length + ' ใบที่การเงินยังไม่รับ)</label><select id="aPick"><option value="">— เลือก —</option>' +
-    L.map(x => `<option value="${esc(x.id)}">${esc(x.no)} · ${fmt(x.amt)} บาท · ${esc(shortBank(x.bank))}${x.by === me ? ' · ของฉัน' : x.by ? ' · ' + esc(x.by) : ''}</option>`).join('') + '</select>'
-    : '<p class="hint">ไม่มีเช็คที่รอการเงินรับ · ถ้าการเงินรับแล้ว ใช้ฟอร์มขอแก้ไขแทน</p>';
-  if ($('aPick')) $('aPick').onchange = aForm;
+  $('aList').innerHTML = '<p class="hint">กำลังดึงรายการ…</p>';
+  let L;
+  try { L = await loadList(ATXT.stage, true); } catch(e){ $('aList').innerHTML = '<div class="warn">ดึงรายการไม่สำเร็จ: ' + esc(e.message) + '</div>'; return; }
+  if (!L){ $('aList').innerHTML = '<a class="btn" href="#" id="aLogin">เข้าสู่ระบบ Lark</a>'; $('aLogin').onclick = e => { e.preventDefault(); toLoginPage(); }; return; }
+  const me = load('cs_name') || '';
+  if (AM === 'send') AL = [...L].sort((a, b) => (!!b.mine || b.by === me) - (!!a.mine || a.by === me) || (b.at || 0) - (a.at || 0));
+  else if (AM === 'finance') AL = L.filter(x => x.mineRecv);
+  else { const B = {}; for (const x of L) if (x.batch && x.batch.mine && x.batchId) (B[x.batchId] = B[x.batchId] || {id: x.batchId, ...x.batch, cheques: []}).cheques.push(x); AL = Object.values(B); }
+  const opt = x => AM === 'deposit' ? `${esc(x.no)} · เช็ค ${x.cheques.map(c => esc(c.no)).join(', ')} · ใบ Pay-in ${fmt(x.total)} บาท${Math.abs(x.total - x.cheques.reduce((a, c) => a + c.amt, 0)) >= 0.005 ? ' · ⚠️ ยอดไม่ตรง' : ''}`
+    : `${esc(x.no)} · ${fmt(x.amt)} บาท · ${esc(shortBank(x.bank))}${AM === 'send' ? (x.mine || x.by === me ? ' · ของฉัน' : x.by ? ' · ' + esc(x.by) : '') : ''}`;
+  $('aList').innerHTML = AL.length ? `<label for="aPick">เลือกรายการที่จะแก้ (${ATXT.what} ${AL.length} รายการ)</label><select id="aPick"><option value="">— เลือก —</option>` +
+    AL.map(x => `<option value="${esc(x.id)}">${opt(x)}</option>`).join('') + '</select>' : `<p class="hint">${ATXT.none}</p>`;
+  if ($('aPick')){ $('aPick').onchange = aForm; const p = APRE && AL.find(x => x.no === APRE || x.ref === APRE || (x.cheques || []).some(c => c.no === APRE)); if (p){ $('aPick').value = p.id; aForm(); } }
   $('aEdit').scrollIntoView({behavior: 'smooth'});
 }
 function aForm(){
   AI_ = (AL || []).find(x => x.id === $('aPick').value); $('aN').innerHTML = '';
   if (!AI_){ $('aForm').innerHTML = ''; return; }
-  const banks = Object.values(BANKS).filter((b, i, a) => a.indexOf(b) === i && b !== BANK_OTHER);
-  $('aForm').innerHTML = `<label>เลขที่เช็ค</label><input id="aNo" inputmode="numeric" value="${esc(AI_.no)}">` +
-    `<label>จำนวนเงิน (บาท)</label><input id="aAmt" inputmode="decimal" value="${fmt(AI_.amt)}">` +
-    `<label>ธนาคาร</label><select id="aBank">${banks.map(b => `<option ${b === AI_.bank ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>` +
-    `<label>วันที่บนเช็ค</label><input id="aDt" type="date" value="${bkkDate(AI_.date)}">` +
-    (AI_.edits ? `<p class="hint" style="white-space:pre-line;margin-top:8px">ประวัติการแก้:\n${esc(AI_.edits)}</p>` : '') +
-    `<button class="btn" id="aSave" style="margin-top:12px">💾 บันทึกการแก้</button>` +
-    `<p class="hint">ระบบเก็บค่าเดิมไว้ในประวัติ · การเงินจะเห็นข้อมูลใหม่ตอนรับเช็ค</p>`;
+  const hist = AI_.edits ? `<p class="hint" style="white-space:pre-line;margin-top:8px">ประวัติการแก้:\n${esc(AI_.edits)}</p>` : '';
+  if (AM === 'deposit'){
+    const sum = AI_.cheques.reduce((a, c) => a + c.amt, 0);
+    const df = Math.round((AI_.total - sum) * 100) / 100;
+    $('aForm').innerHTML = (Math.abs(df) >= 0.005 ? `<div class="warn" style="margin-top:8px">⚠️ <b>ยอดไม่ตรง</b> · ใบ Pay-in ${fmt(AI_.total)} · เช็ค ${fmt(sum)} (ต่าง ${fmt(df)}) · ถ้า AI อ่านยอดผิด แก้ด้านล่างได้เลย</div>` : '') +
+      `<p class="hint" style="margin-top:8px">ยอดเช็คในรอบนี้ ${fmt(sum)} บาท · ดูยอดจริงจากใบ Pay-in ตัวจริง</p>` +
+      `<label>ยอดรวมตามใบ Pay-in (บาท)</label><input id="aTot" inputmode="decimal" value="${fmt(AI_.total)}">` +
+      `<label>ธนาคารที่นำฝาก</label><select id="aAcct">${ACCOUNTS.map(a => `<option ${a[0] === AI_.acct ? 'selected' : ''}>${esc(a[0])}</option>`).join('')}</select>` +
+      `<label>วันที่นำฝาก</label><input id="aDt" type="date" value="${bkkDate(AI_.date)}">` + hist +
+      `<button class="btn" id="aSave" style="margin-top:12px">💾 บันทึกการแก้</button>` +
+      `<p class="hint">ระบบเก็บค่าเดิมไว้ในประวัติ เทียบยอดใหม่ให้เอง และแจ้ง Treasury · ถ้าเลือกเช็คผิดใบ แจ้ง Treasury ให้ตีกลับ</p>`;
+  } else {
+    const banks = Object.values(BANKS).filter((b, i, a) => a.indexOf(b) === i && b !== BANK_OTHER);
+    $('aForm').innerHTML = `<label>เลขที่เช็ค</label><input id="aNo" inputmode="numeric" value="${esc(AI_.no)}">` +
+      `<label>จำนวนเงิน (บาท)</label><input id="aAmt" inputmode="decimal" value="${fmt(AI_.amt)}">` +
+      `<label>ธนาคาร</label><select id="aBank">${banks.map(b => `<option ${b === AI_.bank ? 'selected' : ''}>${esc(b)}</option>`).join('')}</select>` +
+      `<label>วันที่บนเช็ค</label><input id="aDt" type="date" value="${bkkDate(AI_.date)}">` + hist +
+      `<button class="btn" id="aSave" style="margin-top:12px">💾 บันทึกการแก้</button>` +
+      `<p class="hint">ระบบเก็บค่าเดิมไว้ในประวัติ และแจ้งกลุ่มให้ · ${AM === 'send' ? 'การเงินจะเห็นข้อมูลใหม่ตอนรับเช็ค' : 'ข้อมูลใหม่จะไปถึงขั้นนำฝากและ Treasury'}</p>`;
+  }
   $('aSave').onclick = aSave;
 }
 async function aSave(){
-  const ch = {no: $('aNo').value.replace(/\D/g, ''), amt: +$('aAmt').value.replace(/,/g, ''), bank: $('aBank').value, date: $('aDt').value};
+  const dep = AM === 'deposit';
+  const ch = dep ? {total: +$('aTot').value.replace(/[^\d.]/g, ''), acct: $('aAcct').value, date: $('aDt').value}
+    : {no: $('aNo').value.replace(/\D/g, ''), amt: +$('aAmt').value.replace(/,/g, ''), bank: $('aBank').value, date: $('aDt').value};
   $('aSave').disabled = true; $('aSave').textContent = 'กำลังบันทึก…';
   try {
-    const r = await wf(WORKER + '/fix', {method: 'POST', headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'application/json'}, body: JSON.stringify({id: AI_.id, by: 'send', changes: ch})});
+    const r = await wf(WORKER + (dep ? '/fixdep' : '/fix'), {method: 'POST', headers: {'Authorization': 'Bearer ' + load('cs_session'), 'Content-Type': 'application/json'},
+      body: JSON.stringify(dep ? {batch: AI_.id, changes: ch} : {id: AI_.id, by: AM, changes: ch})});
     const ns = r.headers.get('X-Session'); if (ns) store('cs_session', ns);
     const d = await r.json().catch(() => ({}));
     if (d.login){ store('cs_session', null); return toLoginPage(); }
     if (!d.ok) throw new Error(d.error || ('HTTP ' + r.status));
     $('aN').innerHTML = d.changed ? '<div class="good" style="margin-top:8px">✅ บันทึกแล้ว · ' + esc(d.log.split(': ').slice(1).join(': ')) + '</div>' : '<div class="hint" style="margin-top:8px">ไม่มีช่องที่เปลี่ยน</div>';
-    if (d.changed) Object.assign(AI_, {no: ch.no, amt: ch.amt, bank: ch.bank, date: Date.UTC(+ch.date.slice(0, 4), +ch.date.slice(5, 7) - 1, +ch.date.slice(8, 10)) - 7 * 3600e3, edits: (AI_.edits ? AI_.edits + '\n' : '') + d.log});
+    if (d.changed){
+      const D = Date.UTC(+ch.date.slice(0, 4), +ch.date.slice(5, 7) - 1, +ch.date.slice(8, 10)) - 7 * 3600e3, E = (AI_.edits ? AI_.edits + '\n' : '') + d.log;
+      Object.assign(AI_, dep ? {total: ch.total, acct: ch.acct, date: D, edits: E} : {no: ch.no, amt: ch.amt, bank: ch.bank, date: D, edits: E});
+    }
   } catch(e){ $('aN').innerHTML = '<div class="warn" style="margin-top:8px">❌ บันทึกไม่สำเร็จ: ' + esc(e.message) + '</div>'; }
   finally { $('aSave').disabled = false; $('aSave').textContent = '💾 บันทึกการแก้'; }
 }
@@ -1053,10 +1089,12 @@ $('rOk').addEventListener('change', () => { $('rSend').disabled = !$('rOk').chec
 $('rSend').addEventListener('click', receiveSend);
 $('rAgain').addEventListener('click', () => { $('cam').value=''; $('cam').click(); });
 if (MODE === 'receive') initReceive();
-if (MODE === 'send' && WORKER){
-  document.querySelector('main').insertAdjacentHTML('beforeend', '<p class="hint" style="text-align:center;margin:16px 0"><a href="#" id="aOpen">✏️ แก้ข้อมูลเช็คที่ส่งไปแล้ว (ก่อนการเงินรับ)</a></p>');
+// ทางแก้สิ่งที่ส่งไปแล้ว: ลิงก์ท้ายหน้า ① ② ③ (ปุ่มเด่น) · ?edit=1 เปิดเลย (จากบอร์ด / การ์ดในแชท) · &q=เลขที่ เลือกรายการให้
+if (['send', 'receive', 'deposit'].includes(MODE) && WORKER){
+  document.querySelector('main').insertAdjacentHTML('beforeend', `<p style="text-align:center;margin:16px 0"><a href="#" id="aOpen" class="btn sec" style="font-size:15px">${ATXT.link}</a></p>`);
   $('aOpen').onclick = e => { e.preventDefault(); aOpen(); };
-  if (/[?&]edit=1/.test(location.search)) setTimeout(aOpen, 0);
+  if (/[?&]edit=1/.test(location.search)) setTimeout(() => aOpen(new URLSearchParams(location.search).get('q') || ''), 0);
+  document.addEventListener('click', e => { const a = e.target.closest('[data-aedit]'); if (a){ e.preventDefault(); aOpen(a.dataset.aedit); } });
 }
 if (MODE === 'send' && WORKER && !load('cs_session')) { $('aiHint').hidden = false; document.querySelector('label[for=cam]').classList.add('sec'); $('aiLogin').onclick = e => { e.preventDefault(); toLoginPage(); }; }
 
@@ -1362,7 +1400,7 @@ async function dSendAll(){
     dRender();
   }
   const ok = go.filter(x => x.st === 'done').length, bad = go.length - ok;
-  $('dbN').innerHTML = `<div class="${bad ? 'warn' : 'good'}" style="margin-top:8px">${ok ? '✅ นำฝากแล้ว ' + ok + ' ใบ · สถานะเปลี่ยนเป็น "นำฝากแล้ว" · ระบบเทียบยอดและแจ้ง Treasury ให้แล้ว' : ''}${bad ? '<br>❌ ส่งไม่สำเร็จ ' + bad + ' ใบ · กด "ส่งนำฝาก" อีกครั้ง' : ''}</div>`;
+  $('dbN').innerHTML = `<div class="${bad ? 'warn' : 'good'}" style="margin-top:8px">${ok ? '✅ นำฝากแล้ว ' + ok + ' ใบ · สถานะเปลี่ยนเป็น "นำฝากแล้ว" · ระบบเทียบยอดและแจ้ง Treasury ให้แล้ว' : ''}${bad ? '<br>❌ ส่งไม่สำเร็จ ' + bad + ' ใบ · กด "ส่งนำฝาก" อีกครั้ง' : ''}</div>` + (ok && ENV_EDITS ? '<p class="hint" style="margin-top:6px"><a href="#" data-aedit="">✏️ ยอด / บัญชี / วันที่ผิด? แก้ได้จนกว่า Treasury จะยืนยัน</a></p>' : '');
 }
 $('dcam').addEventListener('change', e => { if (e.target.files.length) dAdd([...e.target.files]); e.target.value = ''; });
 $('dbSend').addEventListener('click', dSendAll);
@@ -1499,7 +1537,7 @@ const KCOL = [
 const KTABS = [['all', 'ทั้งหมด'], ['receive', '② รอรับ'], ['deposit', '③ รอนำฝาก'], ['confirm', '④ รอยืนยัน'], ['mine', '👤 เช็คที่ฉันส่ง']];
 let KD = {}, KTAB = new URLSearchParams(location.search).get('tab') || 'all';
 const kAge = ms => ms ? Math.floor((Date.now() - ms) / 864e5) : null;
-const kPage = go => { const b = /beta/.test(location.pathname); return /scan\.html$/.test(location.pathname) ? 'scan.html?m=' + go + '&' : (b ? 'beta-' : '') + go + '.html?'; };
+const kPage = go => { const b = /beta/.test(location.pathname); return /scan\.html$/.test(location.pathname) ? 'scan.html?m=' + go + '&' : go === 'send' ? (b ? 'beta.html?' : 'index.html?') : (b ? 'beta-' : '') + go + '.html?'; };
 function kRender(){
   if (!KTABS.some(t => t[0] === KTAB)) KTAB = 'all';
   $('kTabs').innerHTML = KTABS.map(([k, n]) => `<button data-tab="${k}" class="${k === KTAB ? 'on' : ''}">${n}${k === 'all' || k === 'mine' ? '' : ' ' + (KD[k] || []).length}</button>`).join('');
@@ -1507,7 +1545,7 @@ function kRender(){
   const hit = x => !q || [x.no, x.ref, x.payer, x.by, x.dept].some(v => String(v || '').toLowerCase().includes(q));
   let n = 0, late = 0;
   $('kCols').innerHTML = KCOL.filter(c => KTAB === 'all' || KTAB === 'mine' || KTAB === c.st).map(c => {
-    const L = (KD[c.st] || []).filter(x => hit(x) && (KTAB !== 'mine' || (me && x.by === me)));
+    const L = (KD[c.st] || []).filter(x => hit(x) && (KTAB !== 'mine' || x.mine || (me && x.by === me)));
     n += L.length;
     return `<div class="col"><h2>${c.h} <span class="hint">(${L.length})</span></h2>` + (L.length ? L.map(x => {
       const a = kAge(x.at), bad = a != null && a >= 2; if (bad) late++;
@@ -1515,7 +1553,9 @@ function kRender(){
       return `<div class="kc${bad ? ' late' : ''}"><b>${esc(x.no)}</b> · ${fmt(x.amt)} บาท · ${esc(shortBank(x.bank))}<br>` +
         `<span class="hint">${esc(x.payer || '—')} · ส่งโดย ${esc(x.by || '—')}${x.dept ? ' · ' + esc(x.dept) : ''} · ${esc(x.ref || '')}</span><br>` +
         (a == null ? '' : bad ? `<span class="late-t">⏰ ค้าง ${a} วัน (นับจากวันที่ส่งเข้าระบบ)</span>` : `<span class="hint">ส่งเข้าระบบ${a ? ' ' + a + ' วันก่อน' : 'วันนี้'}</span>`) +
-        (x.edits ? `<br><span class="hint">✏️ มีการแก้ข้อมูล</span>` : '') +
+        (x.edits || (x.batch && x.batch.edits) ? `<br><span class="hint">✏️ มีการแก้ข้อมูล</span>` : '') +
+        (ENV_EDITS && (c.st === 'receive' ? x.mine : c.st === 'deposit' ? x.mineRecv : x.batch && x.batch.mine)
+          ? `<br><a class="go" href="${kPage({receive: 'send', deposit: 'receive', confirm: 'deposit'}[c.st])}edit=1&q=${encodeURIComponent(x.no)}">✏️ แก้ที่ฉันส่งไป</a> <span class="hint">(ได้จนกว่าขั้นถัดไปจะทำ)</span>` : '') +
         `<br><a class="go" href="${link}">${c.btn} →</a> <span class="hint">(${c.who})</span></div>`;
     }).join('') : '<p class="hint">ไม่มีงานค้าง 🎉</p>') + '</div>';
   }).join('');
@@ -1537,7 +1577,7 @@ $('kTabs').addEventListener('click', e => { const t = e.target.dataset.tab; if (
 $('kQ').addEventListener('input', kRender);
 if (MODE === 'board') initBoard();
 
-$('next').addEventListener('click', () => { $('done').style.display = 'none'; $('cam').value=''; $('pv').style.display='none'; $('st').textContent=''; window.scrollTo(0,0); $('cam').click(); });
+$('next').addEventListener('click', () => { $('doneEdit').hidden = true; $('done').style.display = 'none'; $('cam').value=''; $('pv').style.display='none'; $('st').textContent=''; window.scrollTo(0,0); $('cam').click(); });
 </script>
 </body>
 </html>
